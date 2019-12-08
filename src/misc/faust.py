@@ -59,9 +59,7 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             else: # data is neither cached nor loaded
                 data = gio.read_ply(abs_meshfile)
                 v, f = data.pos.numpy(), data.face.t().numpy()
-                _,F,E,D = mesh_decimation.generate_transform_matrices(v, f, [4,4,4])
-                F.pop(0)
-                E.pop(0)
+                _,F,E,D = misc.mesh_decimation.generate_transform_matrices(v, f, [4,4,4])
                 np.save(self.downscaled_cache, (E,F,D))
                 
             # assign data to respective fields

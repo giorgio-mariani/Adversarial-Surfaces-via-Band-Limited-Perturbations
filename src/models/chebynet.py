@@ -11,66 +11,49 @@ class ChebClassifier(torch.nn.Module):
     def __init__(
         self,
         param_conv_layers:List[int],
-        dense_input_nodes:int, 
-        num_classes:int,
-        K=6):
+        E_t:List[torch.Tensor],
+        D_t:List[torch.sparse.FloatTensor],
+        num_classes:int, K=6):
         """
         arguments:
          * param_conv_layers: number of output features for the all the convolutional
                               layers (the output features for layer i are the input features
                               of layer i+1), the input features of the first conv. layer are
                               assumed to be 3 (position xyz of node)
-         * dense_input_nodes: number of nodes after all pooling operations, this value is 
-                              used to determine the number of input features for the final
-                              dense layer after convolution.
          * num_classes: number of output classes of the classifier.
         """
 
         super(ChebClassifier, self).__init__()
+        self.edge_indices = [E_t[i]._indices() for i in range(0,len(E_t))]
+    
+         # edge_indices is a list of tensor of shape [2, num_edges (at scale i)] 
+        self.downscale_matrices = [D for D in D_t]
 
         # convolutional layers
         param_conv_layers.insert(0,3) # add the first input features
         self.conv = []
         for i in range(len(param_conv_layers)-1):
-            self.conv.append(ChebConv(
+            chebconv = ChebConv(
                 param_conv_layers[i],
                 param_conv_layers[i+1],
-                K = K))
+                K = K)
+            self.conv.append(chebconv)
+            self.add_module("chebconv_"+str(i), chebconv)
+
 
         # dense layer
-        self.linear= torch.nn.Linear(
-            dense_input_nodes*param_conv_layers[-1], 
+        self.linear = torch.nn.Linear(
+            self.downscale_matrices[-1].shape[0]*param_conv_layers[-1],
             num_classes)
 
-    def forward(
-        self,
-        data:Data,
-        E_t:List[torch.Tensor],
-        D_t:List[torch.sparse.FloatTensor]):
-
-        # assert consistency of D_t and E_t with the convolution layers
-        if len(E_t) != len(D_t):
-            raise ValueError("edge-index list doesn't have the same length as the downscale matrices list.")
-        if len(E_t) != len(self.conv) - 1 != len(D_t):
-            raise ValueError("the edge-index/downscale-matrix lists must have the same length as the number of convlutional layer minus 1.")
-        if data.pos.shape[-1] != self.conv[0].in_channels:
-            raise ValueError("input data shape is not compatible with the first convolutional layer.")
-        if D_t[-1].shape[0]*self.conv[-1].out_channels != self.linear.in_features:
-            raise ValueError("input data shape is not compatible with the final dense layer.")
-
-        # x has shape [num_nodes, num_dimensions], 
-        x = data.pos
-        # NOTE _indices() is not optimal, but should work
-        edge_indices = [data.edge_index] + [E._indices() for E in E_t] # edge_indices is a list of tensor of shape [2, num_edges (at scale i)] 
-        pool_number = len(D_t)
- 
+    def forward(self, x:torch.Tensor):
         # apply chebyshev convolution and pooling layers
-        for i in range(pool_number):
-            x = func.relu(self.conv[i](x, edge_indices[i]))
-            x = pool(x, D_t[i])
+        for i in range(len(self.downscale_matrices)):
+            x = func.relu(self.conv[i](x, self.edge_indices[i]))
+            x = pool(x, self.downscale_matrices[i])
 
         # last convolution and dense layer
-        x = self.conv[i+1](x, edge_indices[i+1])
+        x = self.conv[i+1](x, self.edge_indices[i+1])
         Z = self.linear(x.view(-1)) #flatten and apply dense layer
         return Z #return the logits
 
@@ -94,18 +77,9 @@ class StupidNet(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=dropout)
 
 
-    def forward(self, 
-        data:Data,
-        E_t:List[torch.Tensor],
-        D_t:List[torch.sparse.FloatTensor]):
-
-        # x has shape [num_nodes, num_dimensions], #edge_index1 [2, num_edges]
-        x, edge_index1 = data.pos, data.edge_index
+    def forward(self, x:torch.Tensor):
+        # x has shape [num_nodes, num_dimensions], 
         x = x.view(-1) # flatten
         h = func.relu(self.linear1(x))
         h = self.dropout(h)
         return self.linear2(h)
-
-
-def pool(x:torch.Tensor, downscale_mat:torch.sparse.FloatTensor):
-        return torch.sparse.mm(downscale_mat, x)
