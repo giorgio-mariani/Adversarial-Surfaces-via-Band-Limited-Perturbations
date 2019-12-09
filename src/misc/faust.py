@@ -15,6 +15,8 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.downscaled_cache = os.path.join(self.processed_dir,"ds.npy")
         self._E, self._F, self._D = None, None, None
+        self.url = 'http://faust.is.tue.mpg.de/'
+
 
     @property
     def raw_file_names(self):
@@ -34,8 +36,8 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
         return self._D is not None and not self._E is None  and not self._F is None
 
     def download(self):
-        return
-
+        raise RuntimeError(
+            'Dataset not found. Please download {} from {} and move it to {}'.format(self.raw_file_names, self.url, self.raw_dir))
     def process(self):
         # Read data into huge `Data` list.
         data_list = []
