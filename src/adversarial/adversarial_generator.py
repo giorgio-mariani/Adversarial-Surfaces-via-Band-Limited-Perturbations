@@ -46,7 +46,7 @@ def find_perturbation(
     optim_iterations=500):
     
     vertex_count = x.shape[0]
-    r = torch.normal(0, std=0.05, size=[vertex_count, 3], requires_grad=True)
+    r = torch.normal(0, std=0.05, size=[vertex_count, 3], requires_grad=True, device=x.device)
 
     range_min, range_max = 0, max_c
     c_optimal,r_optimal = None, None
