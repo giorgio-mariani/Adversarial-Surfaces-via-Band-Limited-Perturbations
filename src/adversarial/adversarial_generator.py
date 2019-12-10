@@ -58,6 +58,8 @@ def find_perturbation(
             C=classifier,
             iter_num=optim_iterations, 
             c=midvalue)
+        print("adversarial loss: "+str(f_perturbed.item()))
+
         if f_perturbed <= 0:
             range_max = midvalue
             c_optimal = midvalue
