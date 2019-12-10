@@ -26,7 +26,7 @@ class ChebClassifier(torch.nn.Module):
         super(ChebClassifier, self).__init__()
         self.edge_indices = [E_t[i]._indices() for i in range(0,len(E_t))]
     
-         # edge_indices is a list of tensor of shape [2, num_edges (at scale i)] 
+         # edge_indices is a list of tensor of shape [2, num_edges (at scale i)]
         self.downscale_matrices = [D for D in D_t]
 
         # convolutional layers
@@ -56,6 +56,15 @@ class ChebClassifier(torch.nn.Module):
         x = self.conv[i+1](x, self.edge_indices[i+1])
         Z = self.linear(x.view(-1)) #flatten and apply dense layer
         return Z #return the logits
+
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        #move the downscaled matrices
+        for i in range(len(self.downscale_matrices)):
+            self.downscale_matrices[i] = self.downscale_matrices[i].to( *args, **kwargs)
+        # move the edge indices
+        for i in range(len(self.edge_indices)):
+            self.edge_indices[i] = self.edge_indices[i].to( *args, **kwargs)
 
 
 def pool(x:torch.Tensor, downscale_mat:torch.sparse.FloatTensor):

@@ -1,6 +1,3 @@
-import os.path
-from collections import Counter
-
 import numpy as np
 import tqdm
 import torch 
@@ -22,7 +19,7 @@ model = models.ChebClassifier(
     D_t=dataset.downscale_matrices,
     E_t=dataset.downscaled_edges,
     num_classes = num_classes)
-
+    
 traindata = dataset[:80]
 evaldata = dataset[80:]
 
@@ -50,21 +47,14 @@ target = maxkey
 
 print("choosing class "+str(target)+" for targeted adversarial examples.")
 
-'''
-#plot loss function ----------------#
-import matplotlib.pyplot as plot    #
-fig = plot.figure()                 #
-loss_values = np.array(loss_values) #
-plot.plot(loss_values)              #
-plot.show()                         #
-#-----------------------------------#
-'''
-
 mesh = dataset[23]
-r = adv.generate_perturbation(
+c, r = adv.find_perturbation(
     x=mesh.pos,
+    edge_index=mesh.edge_index,
     target=target,
     classifier=model,
-    iteration_number=100)
+    bsearch_iterations=10,
+    optim_iterations=100)
 
-
+r = r.detach().numpy()
+np.save("perturbation", [r,c])
