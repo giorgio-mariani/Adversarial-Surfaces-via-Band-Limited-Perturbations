@@ -9,26 +9,35 @@ def train(
     train_data:Dataset, 
     classifier:torch.nn.Module,
     param_file:str,
+    device:torch.device=None,
     epoch_number:int = 1):
 
     if os.path.exists(param_file):
         classifier.load_state_dict(torch.load(param_file))
 
+    device = torch.device('cpu') if device is None else device
+
     # meters
     loss_values = []
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3, weight_decay=5e-4)
+    
+    traindata_pos = [mesh.pos.to(device) for mesh in train_data]
+    traindata_gtruth = [mesh.y.to(device) for mesh in train_data]
 
     # train module
     classifier.train()
     for epoch in range(epoch_number):
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
-        for data in tqdm.tqdm(train_data):
+        for i in tqdm.trange(len(train_data)):
+            x = traindata_pos[i]
+            y = traindata_gtruth[i]
+
             optimizer.zero_grad()
-            out = classifier(data.pos)
+            out = classifier(x)
             out = out.view(1,-1)
 
-            loss = criterion(out, data.y)
+            loss = criterion(out, y)
             loss_values.append(loss.item())
 
             loss.backward()
@@ -40,7 +49,11 @@ def train(
 
 def evaluate(
     eval_data:Dataset, 
-    classifier:torch.nn.Module):
+    classifier:torch.nn.Module,
+    device:torch.device=None):
+
+    device = torch.device('cpu') if device is None else device
+
     classifier.eval()
     incorrect_classes = dict()
     correct = 0
