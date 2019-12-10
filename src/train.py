@@ -57,15 +57,21 @@ def evaluate(
     classifier.eval()
     incorrect_classes = dict()
     correct = 0
-    for mesh in tqdm.tqdm(eval_data):
-        out:torch.Tensor = classifier(mesh.pos)
+
+    evaldata_pos = [mesh.pos.to(device) for mesh in eval_data]
+    evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
+
+    for i in tqdm.trange(len(eval_data)):
+        x = evaldata_pos[i]
+        y = evaldata_gtruth[i]
+
+        out:torch.Tensor = classifier(x)
         _, prediction = out.max(dim=0)
-        target = int(mesh.y)
+        target = int(y)
         if target == prediction:
             correct +=1
         else:
             if target not in incorrect_classes:
                 incorrect_classes[target] = Counter()
             incorrect_classes[target][prediction] +=1
-
     return correct/len(eval_data), incorrect_classes
