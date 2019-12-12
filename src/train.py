@@ -29,13 +29,13 @@ def train(
     traindata_pos = [mesh.pos.to(device) for mesh in train_data]
     def transf_ (x):
         mo.transform_rotation_(x)
-        mo.transform_position_(x, 3, 1.5)
+        #mo.transform_position_(x, 3, 1.5)
 
     # train module
     classifier.train()
     for epoch in range(epoch_number):
         # randomize position and rotation of mesh
-        for x in traindata_pos:transf_(x)
+        for x in traindata_pos : transf_(x)
 
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
