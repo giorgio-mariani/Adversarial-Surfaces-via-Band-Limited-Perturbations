@@ -5,6 +5,9 @@ import tqdm
 import torch
 from torch_geometric.data import Dataset
 
+import misc.mesh_operations as mo
+import misc.faust as faust
+
 def train(
     train_data:Dataset, 
     classifier:torch.nn.Module,
@@ -22,12 +25,17 @@ def train(
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3, weight_decay=5e-4)
     
-    traindata_pos = [mesh.pos.to(device) for mesh in train_data]
     traindata_gtruth = [mesh.y.to(device) for mesh in train_data]
+    traindata_pos = [mesh.pos.to(device) for mesh in train_data]
+    transf_ = lambda x: mo.transform_position_(mo.transform_rotation_(x), 3, 1.5)
 
     # train module
     classifier.train()
     for epoch in range(epoch_number):
+        # randomize position and rotation of mesh
+        for x in traindata_pos:transf_(x)
+
+        # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
         for i in tqdm.trange(len(train_data)):
             x = traindata_pos[i]

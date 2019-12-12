@@ -34,7 +34,7 @@ def _adversarial_loss(Z:torch.Tensor, target:int):
     argmax = index[-1] if index[-1] != target else index[-2]
     Zt = Z[target]
     Zmax = Z[argmax]
-    return Zmax - Zt
+    return func.relu(Zmax - Zt)
 
 def find_perturbation(
     x:torch.Tensor,

@@ -94,3 +94,4 @@ def scipy_to_torch_sparse(scp_matrix):
     shape = scp_matrix.shape
     sparse_tensor = torch.sparse.FloatTensor(i, v, torch.Size(shape))
     return sparse_tensor
+
