@@ -27,7 +27,9 @@ def train(
     
     traindata_gtruth = [mesh.y.to(device) for mesh in train_data]
     traindata_pos = [mesh.pos.to(device) for mesh in train_data]
-    transf_ = lambda x: mo.transform_position_(mo.transform_rotation_(x), 3, 1.5)
+    def transf_ (x):
+        mo.transform_rotation_(x)
+        mo.transform_position_(x, 3, 1.5)
 
     # train module
     classifier.train()

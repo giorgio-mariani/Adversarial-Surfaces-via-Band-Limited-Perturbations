@@ -28,7 +28,7 @@ train.train(
     train_data=traindata,
     classifier=model,
     param_file=PARAMS_FILE,
-    epoch_number=0)
+    epoch_number=1)
 
 #compute accuracy
 accuracy, confusion_matrix = train.evaluate(
