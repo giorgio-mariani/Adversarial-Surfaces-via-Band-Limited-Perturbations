@@ -5,8 +5,8 @@ import tqdm
 import torch
 from torch_geometric.data import Dataset
 
-import misc.mesh_operations as mo
-import misc.faust as faust
+import faust
+import mesh.transforms
 
 def train(
     train_data:Dataset, 
@@ -27,15 +27,13 @@ def train(
     
     traindata_gtruth = [mesh.y.to(device) for mesh in train_data]
     traindata_pos = [mesh.pos.to(device) for mesh in train_data]
-    def transf_ (x):
-        mo.transform_rotation_(x)
-        #mo.transform_position_(x, 3, 1.5)
 
     # train module
     classifier.train()
     for epoch in range(epoch_number):
         # randomize position and rotation of mesh
-        for x in traindata_pos : transf_(x)
+        for x in traindata_pos : 
+            mesh.transforms.transform_rotation_(x)
 
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
