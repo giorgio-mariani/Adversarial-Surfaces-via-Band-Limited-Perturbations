@@ -5,7 +5,6 @@ import tqdm
 import torch
 from torch_geometric.data import Dataset
 
-import faust
 import mesh.transforms
 
 def train(
@@ -13,7 +12,8 @@ def train(
     classifier:torch.nn.Module,
     param_file:str,
     device:torch.device=None,
-    epoch_number:int = 1):
+    epoch_number:int = 1,
+    rotate=False):
 
     if os.path.exists(param_file):
         classifier.load_state_dict(torch.load(param_file))
@@ -32,8 +32,9 @@ def train(
     classifier.train()
     for epoch in range(epoch_number):
         # randomize position and rotation of mesh
-        for x in traindata_pos : 
-            mesh.transforms.transform_rotation_(x)
+        if rotate:
+            for x in traindata_pos : 
+                mesh.transforms.transform_rotation_(x)
 
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
@@ -66,20 +67,25 @@ def evaluate(
     incorrect_classes = dict()
     correct = 0
 
+    torch.zeros([])
+
     evaldata_pos = [mesh.pos.to(device) for mesh in eval_data]
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
 
+    confusion = None
     for i in tqdm.trange(len(eval_data)):
         x = evaldata_pos[i]
         y = evaldata_gtruth[i]
 
         out:torch.Tensor = classifier(x)
-        _, prediction = out.max(dim=0)
+        if confusion is None:
+            num_classes = out.shape[-1]
+            confusion = torch.zeros([num_classes, num_classes])
+        
+        _, prediction = out.max(dim=-1)
         target = int(y)
-        if target == prediction:
-            correct +=1
-        else:
-            if target not in incorrect_classes:
-                incorrect_classes[target] = Counter()
-            incorrect_classes[target][prediction] +=1
-    return correct/len(eval_data), incorrect_classes
+        confusion[target, prediction] +=1
+        
+        correct = torch.diag(confusion).sum()
+        accuracy = correct/confusion.sum()
+    return accuracy, incorrect_classes
