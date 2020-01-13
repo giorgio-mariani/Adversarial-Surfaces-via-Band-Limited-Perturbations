@@ -14,10 +14,10 @@ import dataset.downscale as dscale
 
 class FaustDataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, root:str):
-        super(FaustDataset, self).__init__(root=root)
+        super().__init__(root=root)
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.url = 'http://faust.is.tue.mpg.de/'
-        self.ds_delgate = dscale.DownscaleDelegate(self)
+        self.ds_delegate = dscale.DownscaleDelegate(self)
 
 
     @property
@@ -47,12 +47,12 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
 
     
     @property
-    def downscale_matrices(self): return self.ds_delegate.downscale_matrices()
+    def downscale_matrices(self): return self.ds_delegate.downscale_matrices
 
     @property
-    def downscaled_edges(self): return self.ds_delegate.downscaled_edges()
+    def downscaled_edges(self): return self.ds_delegate.downscaled_edges
 
     @property
-    def downscaled_faces(self): return self.ds_delegate.downscaled_faces()
+    def downscaled_faces(self): return self.ds_delegate.downscaled_faces
 
 
