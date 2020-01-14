@@ -77,9 +77,3 @@ def _adversarial_loss(Z:torch.Tensor, target:int, k=0):
 def _vector_field_norm(r:torch.Tensor):
     norm = r.norm(dim=1)
     return norm.sum()
-
-def _area_difference(pos:torch.Tensor, faces:torch.Tensor, r:torch.Tensor):
-    _,_, A1 = laplacebeltrami_FEM(pos,faces)
-    _,_, A2 = laplacebeltrami_FEM(pos+r,faces)
-    return ((A1-A2)**2).sum()
- 

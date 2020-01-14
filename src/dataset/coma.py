@@ -46,7 +46,6 @@ class ComaDataset(torch_geometric.data.InMemoryDataset):
         
         # TODO
 
-
     @property
     def processed_file_names(self):
         return ['data.pt']

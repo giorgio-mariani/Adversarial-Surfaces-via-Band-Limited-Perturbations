@@ -66,29 +66,5 @@ class ChebClassifier(torch.nn.Module):
         for i in range(len(self.edge_indices)):
             self.edge_indices[i] = self.edge_indices[i].to( *args, **kwargs)
 
-
 def pool(x:torch.Tensor, downscale_mat:torch.sparse.FloatTensor):
         return torch.sparse.mm(downscale_mat, x)
-
-
-class StupidNet(torch.nn.Module):
-    """
-    This class consists of a simple two layers neural network.
-
-    This network is used as a baseline for other more sophisticated approaches, such as spiralnet++ or
-    ChebyNet
-    """
-    def __init__(self, in_features, num_classes:int, hidden_layer_features=512, dropout=0):
-        super(StupidNet, self).__init__()
-        
-        self.linear1= torch.nn.Linear(in_features, hidden_layer_features)#
-        self.linear2= torch.nn.Linear(hidden_layer_features, num_classes)#
-        self.dropout = torch.nn.Dropout(p=dropout)
-
-
-    def forward(self, x:torch.Tensor):
-        # x has shape [num_nodes, num_dimensions], 
-        x = x.view(-1) # flatten
-        h = func.relu(self.linear1(x))
-        h = self.dropout(h)
-        return self.linear2(h)
