@@ -75,24 +75,24 @@ def evaluate(
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
 
     confusion = None
-    for 
-    if rotate:
-        for x in traindata_pos : 
-            mesh.transforms.transform_rotation_(x)
+    for epoch in range(epoch_number):
+        if rotate:
+            for x in evaldata_pos: 
+                mesh.transforms.transform_rotation_(x)
 
-    for i in tqdm.trange(len(eval_data)):
-        x = evaldata_pos[i]
-        y = evaldata_gtruth[i]
+        for i in tqdm.trange(len(eval_data)):
+            x = evaldata_pos[i]
+            y = evaldata_gtruth[i]
 
-        out:torch.Tensor = classifier(x)
-        if confusion is None:
-            num_classes = out.shape[-1]
-            confusion = torch.zeros([num_classes, num_classes])
-        
-        _, prediction = out.max(dim=-1)
-        target = int(y)
-        confusion[target, prediction] +=1
-        
-        correct = torch.diag(confusion).sum()
-        accuracy = correct/confusion.sum()
+            out:torch.Tensor = classifier(x)
+            if confusion is None:
+                num_classes = out.shape[-1]
+                confusion = torch.zeros([num_classes, num_classes])
+            
+            _, prediction = out.max(dim=-1)
+            target = int(y)
+            confusion[target, prediction] +=1
+            
+            correct = torch.diag(confusion).sum()
+            accuracy = correct/confusion.sum()
     return accuracy, incorrect_classes

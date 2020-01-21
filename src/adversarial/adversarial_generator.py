@@ -21,7 +21,7 @@ class CarliniAdversarialGenerator(object):
       smoothness_coeff:float=1,
       adversarial_coeff:float=1):
     super().__init__()
-    utils.check_data(pos, edges, faces)
+    utils.check_data(pos, edges, faces,float_type=torch.float)
     float_type = pos.dtype
 
     self.pos = pos
