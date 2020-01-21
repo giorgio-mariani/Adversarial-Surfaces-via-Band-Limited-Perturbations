@@ -156,8 +156,8 @@ class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
     e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
 
     self.eigs_num = eigs_num
-    self.eigvals = torch.tensor(e, dtype=float_type)
-    self.eigvecs = torch.tensor(phi, dtype=float_type)
+    self.eigvals = torch.tensor(e, device=pos.device, dtype=pos.dtype)
+    self.eigvecs = torch.tensor(phi, device=pos.device, dtype=pos.dtype)
 
   def _create_perturbation(self):
     return torch.zeros([self.eigs_num, 3], device=self.pos.device, dtype=self.pos.dtype, requires_grad=True)
@@ -225,13 +225,13 @@ def estimate_perturbation(
   optimal_generator = None 
   increasing = True # flag used to detected whether it is the first phase or the second phase 
 
-  for i in range(bsearch_iterations):
+  for i in range(search_iterations):
     midvalue = (range_min+range_max)/2
     c = range_max if increasing else midvalue
 
     print("\nbinary search step: "+str(i+1))
     print("range: [{},{}]\nc value: {}".format(range_min, range_max, c))
-    print("iterations per step: {}".format(optim_iterations))
+    print("iterations per step: {}".format(minimization_iterations))
     print("phase: "+ ("incrementing" if increasing else "search"))
 
     adv_generator = adversarial_generator(
@@ -242,7 +242,7 @@ def estimate_perturbation(
       classifier=classifier,
       smoothness_coeff=smoothness_coeff,
       adversarial_coeff=c)
-    r, adversarial_loss = adv_generator.generate(iter_num=optim_iterations)
+    r, adversarial_loss = adv_generator.generate(iter_num=minimization_iterations)
 
     # update best estimation
     if adversarial_loss <= 0:
