@@ -112,6 +112,8 @@ class CarliniAdversarialGenerator(object):
       print(key+": "+str(value))
     return self._r.clone().detach(), self.adversarial_loss().clone().detach()
 
+
+
 class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
   def __init__(self,
       pos:torch.Tensor,
@@ -120,7 +122,8 @@ class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
       target:int,
       classifier:torch.nn.Module,
       eigs_num:int=300,
-      adversarial_coeff:float=1):
+      adversarial_coeff:float=1,
+      smoothness_coeff:float=0):
     super().__init__(
       pos=pos,
       edges=edges,
@@ -128,7 +131,7 @@ class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
       target=target,
       classifier=classifier,
       adversarial_coeff=adversarial_coeff,
-      smoothness_coeff=None)
+      smoothness_coeff=smoothness_coeff)
     
     # compute spectral information
     n = self.vertex_count
@@ -193,6 +196,8 @@ class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
     loss = self._smooth_L1_criterion(perturbed_mcf, mcf)
     return loss
 
+
+########################################################################################
 def estimate_perturbation(
   pos:torch.Tensor,
   edges:torch.LongTensor,
