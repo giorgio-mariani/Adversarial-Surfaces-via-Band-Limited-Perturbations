@@ -17,7 +17,6 @@ class CarliniAdversarialGenerator(object):
       faces:torch.LongTensor,
       target:int,
       classifier:torch.nn.Module,
-      eigs_num:int=150,
       smoothness_coeff:float=1,
       adversarial_coeff:float=1):
     super().__init__()
@@ -38,19 +37,6 @@ class CarliniAdversarialGenerator(object):
     # compute useful data
     self.L = tgeo.utils.get_laplacian(edges.t(), normalization="rw")
     self.stiff, self.area = mesh.laplacian.LB_v2(self.pos, self.faces)
-    
-    # compute spectral information
-    n = self.vertex_count
-    ri,ci = self.stiff[0].cpu().detach().numpy()
-    sv = self.stiff[1].cpu().detach().numpy()
-    S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
-
-    ri,ci = self.area[0].cpu().detach().numpy()
-    av = self.area[1].cpu().detach().numpy()
-    A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
-    e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
-    self.eigvals = torch.tensor(e, dtype=float_type)
-    self.eigvecs = torch.tensor(phi, dtype=float_type)
 
     # other info
     self._zero = torch.zeros([1], device=pos.device, dtype=pos.dtype)
@@ -123,6 +109,87 @@ class CarliniAdversarialGenerator(object):
       print(key+": "+str(value))
     return self._r.clone().detach(), self.adversarial_loss().clone().detach()
 
+class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
+  def __init__(self,
+      pos:torch.Tensor,
+      edges:torch.LongTensor,
+      faces:torch.LongTensor,
+      target:int,
+      classifier:torch.nn.Module,
+      eigs_num:int=300,
+      adversarial_coeff:float=1):
+    super().__init__(
+      pos=pos,
+      edges=edges,
+      faces=faces,
+      target=target,
+      classifier=classifier,
+      adversarial_coeff=adversarial_coeff,
+      smoothness_coeff=None)
+    
+    # compute spectral information
+    n = self.vertex_count
+    ri,ci = self.stiff[0].cpu().detach().numpy()
+    sv = self.stiff[1].cpu().detach().numpy()
+    S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
+
+    ri,ci = self.area[0].cpu().detach().numpy()
+    av = self.area[1].cpu().detach().numpy()
+    A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
+    e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
+
+    self.eigs_num = eigs_num
+    self.eigvals = torch.tensor(e, dtype=float_type)
+    self.eigvecs = torch.tensor(phi, dtype=float_type)
+
+  def _create_perturbation(self):
+    return torch.zeros([self.eigs_num, 3], device=self.pos.device, dtype=self.pos.dtype, requires_grad=True)
+
+  @property
+  def perturbed_pos(self):
+    return self.pos + self.eigvecs.matmul(self._r)
+
+  def total_loss(self):
+    # compute various metrics
+    adversarial_loss = self.adversarial_loss()
+    laplace_beltrami_loss = self.LB_loss()
+    least_meshes_loss = self.LSM_loss()
+    mcf = self.MCF_loss()
+    
+    #define actual loss function
+    loss = self.adversarial_coeff*adversarial_loss + mcf
+
+    # track metrics during some iterations
+    if self._iteration % self.loss_tracking_mod == 0:
+      self._loss_values.append(
+      {"adversarial":adversarial_loss.item(), 
+       "laplace-beltrami":laplace_beltrami_loss.item(),
+       "mean-curvature": mcf.item(),
+       "least-square-meshes":least_meshes_loss.item()})
+    return loss
+
+  def LSM_loss(self):
+    n = self.vertex_count
+    perturbation = self.perturbed_pos - self.pos
+    tmp = tsparse.spmm(*self.L, n, n, perturbation) #Least square Meshes problem 
+    return (tmp**2).sum()
+
+  def MCF_loss(self):
+    n = self.vertex_count
+    stiff_r, area_r = mesh.laplacian.LB_v2(self.perturbed_pos, self.faces)
+    
+    tmp = tsparse.spmm(*self.stiff, n, n, self.pos)
+    perturbed_tmp = tsparse.spmm(*self.stiff, n, n, self.perturbed_pos)
+
+    ai, av = self.area
+    ai_r, av_r = area_r
+
+    mcf = tsparse.spmm(ai, torch.reciprocal(av), n, n, tmp)
+    perturbed_mcf = tsparse.spmm(ai_r, torch.reciprocal(av_r), n, n, perturbed_tmp)
+    
+    loss = self._smooth_L1_criterion(perturbed_mcf, mcf)
+    return loss
+
 def estimate_perturbation(
   pos:torch.Tensor,
   edges:torch.LongTensor,
@@ -133,7 +200,7 @@ def estimate_perturbation(
   minimization_iterations=1000,
   starting_c:float=1,
   smoothness_coeff:float=1,
-  eigs_num:int=150):
+  adversarial_generator=SpectralAdversarialGenerator):
 
   range_min, range_max = 0, starting_c
   c_optimal = None 
@@ -149,7 +216,7 @@ def estimate_perturbation(
     print("iterations per step: {}".format(optim_iterations))
     print("phase: "+ ("incrementing" if increasing else "search"))
 
-    adv_generator = CarliniAdversarialGenerator(
+    adv_generator = adversarial_generator(
       pos=pos,
       edges=edges,
       faces=faces,
