@@ -91,6 +91,17 @@ class CarliniAdversarialGenerator(object):
     Ztarget, Zmax = Z[self.target], Z[argmax]
     return torch.max(Zmax - Ztarget, self._zero)
 
+  @property
+  def loss_values(self):
+    if self._loss_values is None:
+      raise Exception("Perturbation not generated yet!")
+    if len(self._loss_values) == 0:
+      return []
+    out = {}
+    for key, value in self._loss_values[0].items():
+      out[key] = [d[key] for d in self._loss_values]
+    return out
+
   def generate(self, iter_num:int=1000, lr=8e-6) -> torch.Tensor:
     # reset variables
     self._r = self._create_perturbation()
@@ -208,11 +219,10 @@ def estimate_perturbation(
   minimization_iterations=1000,
   starting_c:float=1,
   smoothness_coeff:float=1,
-  adversarial_generator=SpectralAdversarialGenerator):
+  adversarial_generator=SpectralAdversarialGenerator) -> CarliniAdversarialGenerator:
 
   range_min, range_max = 0, starting_c
-  c_optimal = None 
-  r_optimal = None
+  optimal_generator = None 
   increasing = True # flag used to detected whether it is the first phase or the second phase 
 
   for i in range(bsearch_iterations):
@@ -236,7 +246,7 @@ def estimate_perturbation(
 
     # update best estimation
     if adversarial_loss <= 0:
-      c_optimal, r_optimal = c, r
+      optimal_generator = adv_generator
 
     # update loop variables
     if increasing and adversarial_loss > 0:
@@ -249,6 +259,6 @@ def estimate_perturbation(
       range_min = midvalue  if adversarial_loss > 0 else range_min
 
   # if unable to find a good c,r pair, return the best found solution
-  if r_optimal is None:
-    c_optimal, r_optimal = c, r
-  return c_optimal, r_optimal
+  if optimal_generator is None:
+    optimal_generator = adv_generator
+  return optimal_generator
