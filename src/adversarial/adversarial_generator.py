@@ -39,6 +39,8 @@ class CarliniAdversarialGenerator(object):
     self.stiff, self.area = mesh.laplacian.LB_v2(self.pos, self.faces)
 
     # other info
+    self.smoothness_coeff = torch.tensor([smoothness_coeff], device=pos.device, dtype=pos.dtype)
+    self.adversarial_coeff = torch.tensor([adversarial_coeff], device=pos.device, dtype=pos.dtype)
     self._zero = torch.zeros([1], device=pos.device, dtype=pos.dtype)
     self._smooth_L1_criterion = torch.nn.SmoothL1Loss(reduction='mean')
     self.loss_tracking_mod = 10
@@ -50,13 +52,14 @@ class CarliniAdversarialGenerator(object):
   def _create_perturbation(self):
     return torch.zeros([self.vertex_count,3], device=self.pos.device, dtype=self.pos.dtype, requires_grad=True)
 
-  def perturbed_input(self):
+  @property
+  def perturbed_pos(self):
     return self.pos + self._r
     
   def total_loss(self):
-    adversarial_loss = self.adversarial_loss()
+    adversarial_loss = self.adversarial_coeff*self.adversarial_loss()
     laplace_beltrami_loss = self.LB_loss()
-    least_meshes_loss = self.LSM_loss()
+    least_meshes_loss = self.smoothness_coeff*self.LSM_loss()
     loss = adversarial_loss + laplace_beltrami_loss + least_meshes_loss
 
     if self._iteration % self.loss_tracking_mod == 0:
@@ -73,7 +76,7 @@ class CarliniAdversarialGenerator(object):
 
   def LB_loss(self):
     n = self.vertex_count
-    stiff_r, area_r = mesh.laplacian.LB_v2(self.perturbed_input(), self.faces)
+    stiff_r, area_r = mesh.laplacian.LB_v2(self.perturbed_pos, self.faces)
     ai, av = self.area
     ai_r, av_r = area_r
     _,L = tsparse.spspmm(ai, torch.reciprocal(av), *self.stiff, n, n, n)
@@ -82,7 +85,7 @@ class CarliniAdversarialGenerator(object):
     return loss
 
   def adversarial_loss(self) -> torch.Tensor:
-    Z = self.classifier(self.perturbed_input())
+    Z = self.classifier(self.perturbed_pos)
     values, index = torch.sort(Z, dim=0)
     argmax = index[-1] if index[-1] != self.target else index[-2] # max{Z(i): i != target}
     Ztarget, Zmax = Z[self.target], Z[argmax]
