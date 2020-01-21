@@ -21,7 +21,7 @@ class CarliniAdversarialGenerator(object):
       smoothness_coeff:float=1,
       adversarial_coeff:float=1):
     super().__init__()
-    utils.check_data(pos, edges, faces)
+    utils.check_data(pos, edges, faces, float_type=torch.float)
     float_type = pos.dtype
 
     self.pos = pos
@@ -55,36 +55,37 @@ class CarliniAdversarialGenerator(object):
     # other info
     self._zero = torch.zeros([1], device=pos.device, dtype=pos.dtype)
     self._smooth_L1_criterion = torch.nn.SmoothL1Loss(reduction='mean')
+    self.loss_tracking_mod = 10
 
     self._r = None
     self._loss_values = None
     self._iteration = None
 
-  def create_perturbation(self):
-    return torch.zeros([self.vertex_count,3], device=pos.device, dtype=pos.dtype, requires_grad=True)
+  def _create_perturbation(self):
+    return torch.zeros([self.vertex_count,3], device=self.pos.device, dtype=self.pos.dtype, requires_grad=True)
 
   def perturbed_input(self):
     return self.pos + self._r
     
-  def total_loss(self, Z):
+  def total_loss(self):
     adversarial_loss = self.adversarial_loss()
     laplace_beltrami_loss = self.LB_loss()
     least_meshes_loss = self.LSM_loss()
     loss = adversarial_loss + laplace_beltrami_loss + least_meshes_loss
 
-    if self._iteration % loss_tracking_ratio == 0:
+    if self._iteration % self.loss_tracking_mod == 0:
       self._loss_values.append(
       {"adversarial":adversarial_loss.item(), 
       "laplace-beltrami":laplace_beltrami_loss.item(),
       "least-square-meshes":least_meshes_loss.item()})
     return loss
   
-  def LSM_loss(self, r:torch.Tensor):
+  def LSM_loss(self):
     n = self.vertex_count
     tmp = tsparse.spmm(*self.L, n, n, self._r) #Least square Meshes problem 
     return (tmp**2).sum()
 
-  def LB_loss(self, r:torch.Tensor):
+  def LB_loss(self):
     n = self.vertex_count
     stiff_r, area_r = mesh.laplacian.LB_v2(self.perturbed_input(), self.faces)
     ai, av = self.area
@@ -95,15 +96,15 @@ class CarliniAdversarialGenerator(object):
     return loss
 
   def adversarial_loss(self) -> torch.Tensor:
-    self.classifier(self.perturbed_input())
+    Z = self.classifier(self.perturbed_input())
     values, index = torch.sort(Z, dim=0)
     argmax = index[-1] if index[-1] != self.target else index[-2] # max{Z(i): i != target}
     Ztarget, Zmax = Z[self.target], Z[argmax]
-    return torch.max(Zmax - Ztarget, self.zero)
+    return torch.max(Zmax - Ztarget, self._zero)
 
   def generate(self, iter_num:int=1000, lr=8e-6) -> torch.Tensor:
     # reset variables
-    self._r = create_perturbation()
+    self._r = self._create_perturbation()
     self._iteration = 0
     self._loss_values = []
 
