@@ -3,8 +3,12 @@ import numpy as np
 import tqdm
 import torch
 import torch.nn.functional as func
+import torch_sparse as tsparse
+import torch_geometric as tgeo
+import scipy.sparse
 
 import utils
+import mesh.laplacian
 
 class CarliniAdversarialGenerator(object):
   def __init__(self,
@@ -36,11 +40,15 @@ class CarliniAdversarialGenerator(object):
     self.stiff, self.area = mesh.laplacian.LB_v2(self.pos, self.faces)
     
     # compute spectral information
-    ri,ci = stiff[0]
+    n = self.vertex_count
+    ri,ci = self.stiff[0].cpu().detach().numpy()
+    sv = self.stiff[1].cpu().detach().numpy()
     S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
-    ri,ci = area[0]
+
+    ri,ci = self.area[0].cpu().detach().numpy()
+    av = self.area[1].cpu().detach().numpy()
     A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
-    e, phi = slinalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
+    e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
     self.eigvals = torch.tensor(e, dtype=float_type)
     self.eigvecs = torch.tensor(phi, dtype=float_type)
 
@@ -48,23 +56,28 @@ class CarliniAdversarialGenerator(object):
     self._zero = torch.zeros([1], device=pos.device, dtype=pos.dtype)
     self._smooth_L1_criterion = torch.nn.SmoothL1Loss(reduction='mean')
 
-    self._r = torch.zeros([self.vertex_count], device=pos.device, dtype=pos.dtype, requires_grad=True)
-    self._loss_values = []
-    self._iteration = 0
-    
-    def total_loss(self, Z):
-      adversarial_loss = self.adversarial_loss()
-      laplace_beltrami_loss = self.LB_loss()
-      least_meshes_loss = self.LSM_loss()
-      loss = adversarial_loss + laplace_beltrami_loss + least_meshes_loss
-      self._loss_values.append(
-        {"adversarial":adversarial_loss.item(), 
-        "laplace-beltrami":laplace_beltrami_loss.item(),
-        "least-square-meshes":least_meshes_loss.item()})
-      return loss
+    self._r = None
+    self._loss_values = None
+    self._iteration = None
+
+  def create_perturbation(self):
+    return torch.zeros([self.vertex_count,3], device=pos.device, dtype=pos.dtype, requires_grad=True)
 
   def perturbed_input(self):
     return self.pos + self._r
+    
+  def total_loss(self, Z):
+    adversarial_loss = self.adversarial_loss()
+    laplace_beltrami_loss = self.LB_loss()
+    least_meshes_loss = self.LSM_loss()
+    loss = adversarial_loss + laplace_beltrami_loss + least_meshes_loss
+
+    if self._iteration % loss_tracking_ratio == 0:
+      self._loss_values.append(
+      {"adversarial":adversarial_loss.item(), 
+      "laplace-beltrami":laplace_beltrami_loss.item(),
+      "least-square-meshes":least_meshes_loss.item()})
+    return loss
   
   def LSM_loss(self, r:torch.Tensor):
     n = self.vertex_count
@@ -89,27 +102,25 @@ class CarliniAdversarialGenerator(object):
     return torch.max(Zmax - Ztarget, self.zero)
 
   def generate(self, iter_num:int=1000, lr=8e-6) -> torch.Tensor:
-    self._r = torch.zeros([self.vertex_count], 
-      device=self.pos.device,
-      dtype=self.pos.dtype,
-      requires_grad=True)
+    # reset variables
+    self._r = create_perturbation()
     self._iteration = 0
     self._loss_values = []
-
 
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self._r], lr=lr)
     self.classifier.eval()
     for i in range(iter_num):
-        optimizer.zero_grad()
-        loss = self.total_loss()
-        loss.backward()
-        optimizer.step()
+      self._iteration += 1
+      optimizer.zero_grad()
+      loss = self.total_loss()
+      loss.backward()
+      optimizer.step()
     
     # print the losses for the last iteration
-    for key,value in self._loss_values[-1]:
+    for key,value in self._loss_values[-1].items():
       print(key+": "+str(value))
-    return r.clone().detach(), self.adversarial_loss().clone().detach()
+    return self._r.clone().detach(), self.adversarial_loss().clone().detach()
 
 def estimate_perturbation(
   pos:torch.Tensor,

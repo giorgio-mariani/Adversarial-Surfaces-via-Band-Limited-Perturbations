@@ -1,3 +1,5 @@
+import torch
+import networkx as nx
 
 def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_type:type=torch.double):
     # check input consistency 

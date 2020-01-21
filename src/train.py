@@ -59,7 +59,9 @@ def train(
 def evaluate(
     eval_data:Dataset, 
     classifier:torch.nn.Module,
-    device:torch.device=None):
+    device:torch.device=None,
+    rotate=True,
+    epoch_number=1):
 
     device = torch.device('cpu') if device is None else device
 
@@ -73,6 +75,11 @@ def evaluate(
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
 
     confusion = None
+    for 
+    if rotate:
+        for x in traindata_pos : 
+            mesh.transforms.transform_rotation_(x)
+
     for i in tqdm.trange(len(eval_data)):
         x = evaldata_pos[i]
         y = evaldata_gtruth[i]
