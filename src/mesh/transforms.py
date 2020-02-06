@@ -3,7 +3,7 @@ import random
 
 import torch
 
-def transform_rotation_ (pos, dims=[0,1,2]):
+def transform_rotation_(pos, dims=[0,1,2]):
     phi_n = [random.random()*2*math.pi for _ in dims]
     cos_n = [math.cos(phi) for phi in phi_n]
     sin_n = [math.sin(phi) for phi in phi_n]
@@ -36,3 +36,15 @@ def transform_rotation_ (pos, dims=[0,1,2]):
             [   0,   0,  1]], device=device)
         R = R.mm(tmp)
     pos[:,:] = torch.matmul(pos, R.t())
+
+
+def transform_translation_ (pos):
+    n = pos.shape[0]
+    comp_device = pos.device
+    comp_type = pos.dtype
+
+    centroid = pos.sum(dim=0, keepdim=False)/n
+    dist_from_origin = centroid.norm(p=2, dim=-1)
+    offset = torch.normal(mean=0, std=0.5, device=comp_device, dtype=comp_type)
+    pos[:,:] = offset - dist_from_origin + pos
+    return pos

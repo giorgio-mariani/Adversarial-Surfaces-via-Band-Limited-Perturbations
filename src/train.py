@@ -32,10 +32,10 @@ def train(
     classifier.train()
     for epoch in range(epoch_number):
         # randomize position and rotation of mesh
-        if rotate:
-            for x in traindata_pos : 
-                mesh.transforms.transform_rotation_(x)
-
+        for x in traindata_pos :
+            if translate: mesh.transforms.transform_translation_(x)
+            if rotate: mesh.transforms.transform_rotation_(x)
+        
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
         for i in tqdm.trange(len(train_data)):
@@ -76,9 +76,9 @@ def evaluate(
 
     confusion = None
     for epoch in range(epoch_number):
-      if rotate:
-          for x in evaldata_pos: 
-              mesh.transforms.transform_rotation_(x)
+        for x in evaldata_pos :
+            if translate: mesh.transforms.transform_translation_(x)
+            if rotate: mesh.transforms.transform_rotation_(x)
 
       for i in tqdm.trange(len(eval_data)):
           x = evaldata_pos[i]
