@@ -42,9 +42,10 @@ def transform_translation_ (pos):
     n = pos.shape[0]
     comp_device = pos.device
     comp_type = pos.dtype
+    mean = torch.tensor([0], device=comp_device, dtype=comp_type)
+    std = torch.tensor([0.5], device=comp_device, dtype=comp_type)
 
-    centroid = pos.sum(dim=0, keepdim=False)/n
-    dist_from_origin = centroid.norm(p=2, dim=-1)
-    offset = torch.normal(mean=0, std=0.5, device=comp_device, dtype=comp_type)
-    pos[:,:] = offset - dist_from_origin + pos
+    centroid = pos.sum(dim=0, keepdim=True)/n
+    offset = torch.normal(mean=mean, std=std, device=comp_device, dtype=comp_type)
+    pos[:,:] = offset + (pos - centroid)
     return pos

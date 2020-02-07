@@ -13,7 +13,8 @@ def train(
     param_file:str,
     device:torch.device=None,
     epoch_number:int = 1,
-    rotate=False):
+    rotate=True,
+    translate=True):
 
     if os.path.exists(param_file):
         classifier.load_state_dict(torch.load(param_file))
@@ -61,6 +62,7 @@ def evaluate(
     classifier:torch.nn.Module,
     device:torch.device=None,
     rotate=True,
+    translate=True,
     epoch_number=1):
 
     device = torch.device('cpu') if device is None else device
@@ -68,8 +70,6 @@ def evaluate(
     classifier.eval()
     incorrect_classes = dict()
     correct = 0
-
-    torch.zeros([])
 
     evaldata_pos = [mesh.pos.to(device) for mesh in eval_data]
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
