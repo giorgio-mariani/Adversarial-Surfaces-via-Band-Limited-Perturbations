@@ -68,9 +68,6 @@ def evaluate(
     device = torch.device('cpu') if device is None else device
 
     classifier.eval()
-    incorrect_classes = dict()
-    correct = 0
-
     evaldata_pos = [mesh.pos.to(device) for mesh in eval_data]
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
 
@@ -95,4 +92,4 @@ def evaluate(
             
             correct = torch.diag(confusion).sum()
             accuracy = correct/confusion.sum()
-    return accuracy, incorrect_classes
+    return accuracy, confusion
