@@ -43,7 +43,7 @@ def transform_translation_ (pos):
     comp_device = pos.device
     comp_type = pos.dtype
     mean = torch.tensor([0], device=comp_device, dtype=comp_type)
-    std = torch.tensor([0.5], device=comp_device, dtype=comp_type)
+    std = torch.tensor([0.05], device=comp_device, dtype=comp_type)
 
     centroid = pos.sum(dim=0, keepdim=True)/n
     offset = torch.normal(mean=mean, std=std)
