@@ -1,5 +1,6 @@
 import torch
 import networkx as nx
+import numpy as np
 
 def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_type:type=torch.double):
     # check input consistency 
@@ -14,7 +15,8 @@ def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_t
 def get_spirals(
   pos:torch.Tensor, 
   edges:torch.LongTensor,
-  neighbors_num:int=256):
+  neighbors_num:int=256,
+  cutoff:int=3):
   device = pos.device
   dtype = pos.dtype
 
@@ -26,16 +28,25 @@ def get_spirals(
   n = pos.shape[0]
   m = edges.shape[0]
   k = neighbors_num
+  edge_index = edges.cpu().clone().detach().numpy() # they are all necessary unfortunately
 
   graph = nx.Graph()
   graph.add_nodes_from(range(n))
-  graph.add_edges_from(edges.numpy())
+  graph.add_edges_from(edge_index)
 
-  N = torch.tensor([n,k], device=device, dtype=dtype)
-  for node_index in range(n):
-    spiral = nx.single_source_shortest_path_length(G, node, cutoff=K)
-    N[node_index, :] = spiral
-  return N
+  N = np.zeros([n,k], dtype=float)
+  spiral = nx.all_pairs_shortest_path(graph, cutoff=cutoff)
+  for node_idx, neighborhood in spiral:
+
+    if len(neighborhood) < k:
+      raise RuntimeError("Node {} has only {} neighbours, increase cutoff value!".format(node_idx, len(neighborhood)))
+
+    for i, neighbour_idx in enumerate(neighborhood.keys()):
+      if i >= k: break
+      else: N[node_idx, i] = neighbour_idx
+    
+  node_neighbours_matrix = torch.tensor(N, device=device, dtype=dtype)
+  return node_neighbours_matrix
 
 
  
