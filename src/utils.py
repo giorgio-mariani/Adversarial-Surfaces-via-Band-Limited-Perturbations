@@ -18,7 +18,6 @@ def get_spirals(
   neighbors_num:int=256,
   cutoff:int=3):
   device = pos.device
-  dtype = pos.dtype
 
   if len(pos.shape)!= 2 or pos.shape[1] != 3:
       raise ValueError("The vertices matrix must have shape [n,3] and type float!")
@@ -45,7 +44,7 @@ def get_spirals(
       if i >= k: break
       else: N[node_idx, i] = neighbour_idx
     
-  node_neighbours_matrix = torch.tensor(N, device=device, dtype=dtype)
+  node_neighbours_matrix = torch.tensor(N, device=device, dtype=torch.long)
   return node_neighbours_matrix
 
 
