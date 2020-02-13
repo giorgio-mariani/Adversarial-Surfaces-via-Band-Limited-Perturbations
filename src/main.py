@@ -44,7 +44,3 @@ faces = coma_data[0].face
 
 r = torch.zeros(size=[pos.shape[0], 3])#torch.normal(0, std=0.001, size=[pos.shape[0], 3], requires_grad=True, device=pos.device)
 x = (pos+r).to(torch.double)
-
-
-stiffness, mass, lumped = mesh.laplacian.laplacebeltrami_FEM(x, faces.t())
-mesh.laplacian.LB_v2(x, faces.t())

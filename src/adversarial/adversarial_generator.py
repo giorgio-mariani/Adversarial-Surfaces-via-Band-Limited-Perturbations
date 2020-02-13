@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import networkx as nx
 import numpy as np
 import tqdm
@@ -219,7 +221,7 @@ def estimate_perturbation(
   minimization_iterations=1000,
   starting_c:float=1,
   smoothness_coeff:float=1,
-  adversarial_generator=SpectralAdversarialGenerator) -> CarliniAdversarialGenerator:
+  adversarial_generator=SpectralAdversarialGenerator) -> Tuple[CarliniAdversarialGenerator, bool]:
 
   range_min, range_max = 0, starting_c
   optimal_generator = None 
@@ -259,6 +261,7 @@ def estimate_perturbation(
       range_min = midvalue  if adversarial_loss > 0 else range_min
 
   # if unable to find a good c,r pair, return the best found solution
-  if optimal_generator is None:
+  misclassified = optimal_generator is not None
+  if not misclassified:
     optimal_generator = adv_generator
-  return optimal_generator
+  return optimal_generator, misclassified
