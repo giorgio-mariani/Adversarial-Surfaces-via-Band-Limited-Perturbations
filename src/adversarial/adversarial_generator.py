@@ -11,7 +11,9 @@ import scipy.sparse
 
 import utils
 import mesh.laplacian
+import adversarial.generators as adv
 
+'''
 class CarliniAdversarialGenerator(object):
   def __init__(self,
       pos:torch.Tensor,
@@ -126,7 +128,6 @@ class CarliniAdversarialGenerator(object):
     return self._r.clone().detach(), self.adversarial_loss().clone().detach()
 
 
-
 class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
   def __init__(self,
       pos:torch.Tensor,
@@ -209,6 +210,7 @@ class SpectralAdversarialGenerator(CarliniAdversarialGenerator):
     loss = self._smooth_L1_criterion(perturbed_mcf, mcf)
     return loss
 
+'''
 
 ########################################################################################
 def estimate_perturbation(
@@ -221,7 +223,7 @@ def estimate_perturbation(
   minimization_iterations=1000,
   starting_c:float=1,
   smoothness_coeff:float=1,
-  adversarial_generator=SpectralAdversarialGenerator) -> Tuple[CarliniAdversarialGenerator, bool]:
+  adversarial_generator=adv.SpectralAdversarialGenerator) -> Tuple[adv.AdversarialGenerator, bool]:
 
   range_min, range_max = 0, starting_c
   optimal_generator = None 

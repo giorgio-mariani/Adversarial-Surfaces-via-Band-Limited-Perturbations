@@ -10,8 +10,6 @@ import tqdm
 import mesh.decimation
 import dataset.downscale as dscale
 
-
-
 class FaustDataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, root:str):
         super().__init__(root=root)
@@ -56,3 +54,31 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
     def downscaled_faces(self): return self.ds_delegate.downscaled_faces
 
 
+class FaustAugmented(FaustDataset):
+  def __init__(self, root:str):
+    super().__init__(root=root)
+    data_aug, slices_aug = torch.load(self.processed_paths[1])
+    data, slices = self.data, self.slices
+    
+    #num_subj = 10
+    #num_class = 10
+    #data.subj = torch.repeat_interleave(torch.arange(start=0, end=num_subj), num_class, dim=0)
+    #slices["subj"] = torch.range(start=0, end=num_class*num_subj)
+
+    keys = data.keys
+    key_cat_dim = {"pos":0, "edge_index":1, "y":0,"face":1}
+    for k in keys:
+      data_k = getattr(data, k)
+      data_k_aug = getattr(data_aug, k)
+      slice_k = slices[k]
+      slice_k_aug =  slices_aug[k]
+
+      tmp_data = torch.cat([data_k, data_k_aug], dim=key_cat_dim[k])
+      tmp_slices = torch.cat([slice_k[:-1], slice_k[-1] + slice_k_aug[:]], dim=0)
+
+      self.data[k] = tmp_data
+      self.slices[k] = tmp_slices
+
+  @property
+  def processed_file_names(self):
+      return ['data.pt','data_amass.pt']
