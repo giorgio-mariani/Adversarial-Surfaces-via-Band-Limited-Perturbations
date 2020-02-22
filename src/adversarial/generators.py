@@ -152,7 +152,7 @@ class AdversarialGenerator(object):
     else:
       return self._metrics[metric_name]
 
-  def generate(self, iter_num:int=1000, lr=8e-6, track_metrics=False) -> torch.Tensor:
+  def generate(self, iter_num:int=1000, lr=8e-6, track_metrics=False, use_tqdm=False) -> torch.Tensor:
     # reset variables
     self._r = self._create_perturbation()
     self._iteration = 0
@@ -161,7 +161,9 @@ class AdversarialGenerator(object):
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self._r], lr=lr)
     self.classifier.eval()
-    for i in range(iter_num):
+
+    iterations = tqdm.trange(iter_num) if use_tqdm else range(iter_num)
+    for i in iterations:
       self._iteration += 1
       optimizer.zero_grad()
       loss = self.total_loss(track_metrics)
