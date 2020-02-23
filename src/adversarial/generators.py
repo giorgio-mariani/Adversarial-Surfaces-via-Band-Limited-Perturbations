@@ -89,7 +89,7 @@ class AdversarialGenerator(object):
           if n not in self._metrics:
             self._metrics[n] = []
           v = metric(self=self)
-          self._metrics[n].append(v)
+          self._metrics[n].append(v.item())
     return loss
   
   @metric
