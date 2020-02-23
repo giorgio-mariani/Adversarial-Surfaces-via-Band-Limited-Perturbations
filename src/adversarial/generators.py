@@ -75,7 +75,7 @@ class AdversarialGenerator(object):
   def perturbed_pos(self):
     return self.pos + self._r
     
-  def total_loss(self, track_metrics=True):
+  def total_loss(self):
     #laplace_beltrami_loss = self.LB_loss()
     #least_meshes_loss = self.smoothness_coeff*self.LSM_loss()
     adversarial_loss = self.adversarial_loss()
@@ -83,7 +83,7 @@ class AdversarialGenerator(object):
     loss = self.adversarial_coeff*adversarial_loss + distance_loss
 
     # add metrics
-    if track_metrics and (self._iteration % self.loss_tracking_mod == 0):
+    if (self._iteration % self.loss_tracking_mod == 0):
       for n, metric in self._metrics_functions.items():
         if n in self._metrics_to_track:
           if n not in self._metrics:
@@ -190,7 +190,7 @@ class AdversarialGenerator(object):
     for i in iterations:
       self._iteration += 1
       optimizer.zero_grad()
-      loss = self.total_loss(track_values)
+      loss = self.total_loss()
       loss.backward()
       optimizer.step()
     
