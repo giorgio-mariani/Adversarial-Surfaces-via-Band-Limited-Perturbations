@@ -60,6 +60,7 @@ class AdversarialGenerator(object):
     self._r = None
     self._metrics = None
     self._iteration = None
+    self._metrics_to_track = None
 
   @property
   def _metrics_functions(self):
@@ -83,11 +84,12 @@ class AdversarialGenerator(object):
 
     # add metrics
     if track_metrics and (self._iteration % self.loss_tracking_mod == 0):
-      for n, metric in self._metrics_functions:
-        if n not in self._metrics:
-          self._metrics[n] = []
-        v = metric(self=self)
-        self._metrics[n].append(v)
+      for n, metric in self._metrics_functions.items():
+        if n in self._metrics_to_track:
+          if n not in self._metrics:
+            self._metrics[n] = []
+          v = metric(self=self)
+          self._metrics[n].append(v)
     return loss
   
   @metric
@@ -152,21 +154,43 @@ class AdversarialGenerator(object):
     else:
       return self._metrics[metric_name]
 
-  def generate(self, iter_num:int=1000, lr=8e-6, track_metrics=False, use_tqdm=False) -> torch.Tensor:
+  def generate(self, 
+    iter_num:int=1000, 
+    lr:float=8e-6,
+    usetqdm:str=None,
+    metrics_to_track="all") -> torch.Tensor:
     # reset variables
     self._r = self._create_perturbation()
     self._iteration = 0
     self._metrics = dict()
 
+    if metrics_to_track is None:
+      self._metrics_to_track = []
+    elif metrics_to_track=="all":
+      self._metrics_to_track = self._metrics_functions.keys()
+    elif hasattr(metrics_to_track, "__contains__"):
+      self._metrics_to_track = metrics_to_track
+    else:
+      raise ValueError("Invalid input for 'metrics_to_track', valid values are: None, 'all' or an iterable of strings")
+
+
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self._r], lr=lr)
     self.classifier.eval()
 
-    iterations = tqdm.trange(iter_num) if use_tqdm else range(iter_num)
+    if usetqdm is None or usetqdm == False:
+      iterations =  range(iter_num)
+    elif usetqdm == "standard" or usetqdm == True:
+      iterations = tqdm.trange(iter_num)
+    elif usetqdm == "notebook":
+      iterations = tqdm.tqdm_notebook(range(iter_num))
+    else:
+      raise ValueError("Invalid input for 'usetqdm', valid values are: None, 'standard' and 'notebook'.")
+
     for i in iterations:
       self._iteration += 1
       optimizer.zero_grad()
-      loss = self.total_loss(track_metrics)
+      loss = self.total_loss(track_values)
       loss.backward()
       optimizer.step()
     
