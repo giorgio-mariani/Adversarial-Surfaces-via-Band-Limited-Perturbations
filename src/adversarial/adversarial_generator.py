@@ -222,8 +222,8 @@ def estimate_perturbation(
   search_iterations=20,
   minimization_iterations=1000,
   starting_c:float=1,
-  smoothness_coeff:float=1,
-  adversarial_generator=adv.SpectralAdversarialGenerator) -> Tuple[adv.AdversarialGenerator, bool]:
+  adversarial_generator=adv.SpectralAdversarialGenerator,
+  learning_rate:float=1e-4) -> Tuple[adv.AdversarialGenerator, bool]:
 
   range_min, range_max = 0, starting_c
   optimal_generator = None 
@@ -244,9 +244,8 @@ def estimate_perturbation(
       faces=faces,
       target=target,
       classifier=classifier,
-      smoothness_coeff=smoothness_coeff,
       adversarial_coeff=c)
-    r, adversarial_loss = adv_generator.generate(iter_num=minimization_iterations)
+    r, adversarial_loss = adv_generator.generate(iter_num=minimization_iterations, lr=learning_rate)
 
     # update best estimation
     if adversarial_loss <= 0:

@@ -298,7 +298,7 @@ class DistAdversarialGenerator(SpectralAdversarialGenerator):
     dist = torch.norm(X-self.pos.view(self.vertex_count,1,3), p=2,dim=-1)
     dist_r = torch.norm(Xr-self.perturbed_pos.view(self.vertex_count,1,3), p=2,dim=-1)
     dist_loss = self._smooth_L1_criterion(dist, dist_r)
-    return local_euclidean_loss
+    return dist_loss
   
   def distance_loss(self):
     return self.local_euclidean_loss()
