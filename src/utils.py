@@ -6,6 +6,8 @@ import scipy
 import scipy.sparse.linalg  as slinalg
 
 from mesh.laplacian import laplacebeltrami_FEM
+from mesh.laplacian import LB_v2
+
 
 def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_type:type=torch.double):
     # check input consistency 
@@ -61,16 +63,17 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
         raise ValueError("Face indices must have shape [m,3]") 
   
     stiff, area, lump = laplacebeltrami_FEM(pos, faces)
-    #stiff, area = LB_v2(pos, face)
+    #stiff, area = LB_v2(pos, faces)
+    
     n = pos.shape[0]
     device = pos.device
     dtype = pos.dtype
 
-    stiff.coalesce()
-    area.coalesce()
+    stiff = stiff.coalesce()
+    area = area.coalesce()
 
-    si, sv = stiff.indices(), stiff.values()
-    ai, av = area.indices(), area.values()
+    si, sv = stiff.indices().cpu(), stiff.values().cpu()
+    ai, av = area.indices().cpu(), area.values().cpu()
 
     ri,ci = si
     S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
@@ -93,8 +96,9 @@ def heat_kernel(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float) -> torch.Te
 
 def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
     n, k = eigvecs.shape
-    print(eigvecs.shape)
-    D = torch.zeros([n,n])
+    device = eigvals.device
+    dtype = eigvals.dtype
+    D = torch.zeros([n,n], device=device, dtype=dtype)
     for i in tqdm.trange(k):
         eigvec = eigvecs[:,i].view(-1,1)
         eigval = eigvals[i]
@@ -108,4 +112,4 @@ def compute_distance_mse(pos, perturbed_pos, faces, K, t):
     eigvals2, eigvecs2 = eigenpairs(perturbed_pos, faces, K)
     d1 = diffusion_distance(eigvals1,eigvecs1,t)
     d2 = diffusion_distance(eigvals2,eigvecs2,t)
-    return d1,d2
+    return torch.nn.functional.mse_loss(d1, d2)
