@@ -40,20 +40,27 @@ train.train(
 #accuracy, confusion_matrix = train.evaluate(eval_data=evaldata,classifier=model)
 #print(accuracy)
 
-import adversarial.generators as adv
 i=20
 x = dataset_data[i].pos
 e = dataset_data[i].edge_index.t()
 f = dataset_data[i].face.t()
 y = dataset_data[i].y
-t = (y+1)%num_classes
+n = x.shape[0]
+eigs_num = 300
 
-gen = adv.AdversarialGenerator(
-    pos=x,
-    edges=e,
-    faces=f,
-    target=t,
-    classifier=model,
-    adversarial_coeff=100)
+import scipy
+(si, sv), (ai, av) = mesh.laplacian.LB_v2(pos=x, faces=f)
+ri, ci = si.cpu().detach().numpy()
+sv = sv.cpu().detach().numpy()
+S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
 
-r, loss = gen.generate(iter_num=10, track_metrics=True)
+ri,ci = ai.cpu().detach().numpy()
+av = av.cpu().detach().numpy()
+A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
+e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
+
+eigvals = torch.tensor(e, device=x.device, dtype=x.dtype)
+eigvecs = torch.tensor(phi, device=x.device, dtype=x.dtype)
+
+print(eigvals.shape)
+print(eigvecs.shape)

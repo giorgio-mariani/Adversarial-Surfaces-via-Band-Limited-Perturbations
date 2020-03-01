@@ -1,6 +1,11 @@
 import torch
+import tqdm
 import networkx as nx
 import numpy as np
+import scipy
+import scipy.sparse.linalg  as slinalg
+
+from mesh.laplacian import laplacebeltrami_FEM
 
 def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_type:type=torch.double):
     # check input consistency 
@@ -48,5 +53,57 @@ def get_spirals(
   return node_neighbours_matrix
 
 
- 
+#-------------------------------------------------------------------------------------------------
+def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
+    if pos.shape[-1] != 3:
+        raise ValueError("Vertices positions must have shape [n,3]")
+    if faces.shape[-1] != 3:
+        raise ValueError("Face indices must have shape [m,3]") 
+  
+    stiff, area, lump = laplacebeltrami_FEM(pos, faces)
+    #stiff, area = LB_v2(pos, face)
+    n = pos.shape[0]
 
+    stiff.coalesce()
+    area.coalesce()
+
+    si, sv = stiff.indices(), stiff.values()
+    ai, av = area.indices(), area.values()
+
+    ri,ci = si
+    S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
+
+    ri,ci = ai
+    A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
+
+    #A_lumped = scipy.sparse.csr_matrix( (lump, (range(n),range(n))), shape=(n,n))
+
+    eigvals, eigvecs = slinalg.eigsh(S, M=A, k=K, sigma=-1e-6)
+    eigvals = torch.tensor(eigvals)
+    eigvecs = torch.tensor(eigvecs)
+    return eigvals, eigvecs
+
+def heat_kernel(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float) -> torch.Tensor:
+    #hk = eigvecs.matmul(torch.diag(torch.exp(-t*eigvals)).matmul(eigvecs.t()))
+    tmp = torch.exp(-t*eigvals).view(1,-1)
+    hk = (tmp*eigvecs).matmul(eigvecs.t())
+    return hk
+
+def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
+    n, k = eigvecs.shape
+    print(eigvecs.shape)
+    D = torch.zeros([n,n])
+    for i in tqdm.trange(k):
+        eigvec = eigvecs[:,i].view(-1,1)
+        eigval = eigvals[i]
+        tmp = eigvec.repeat(1, n)
+        tmp = tmp - tmp.t()
+        D = D + torch.exp(-2*t*eigval)*(tmp*tmp)
+    return D
+
+def compute_distance_mse(pos, perturbed_pos, faces, K, t):
+    eigvals1, eigvecs1 = eigenpairs(pos, faces, K)
+    eigvals2, eigvecs2 = eigenpairs(perturbed_pos, faces, K)
+    d1 = diffusion_distance(eigvals1,eigvecs1,t)
+    d2 = diffusion_distance(eigvals2,eigvecs2,t)
+    return d1,d2
