@@ -63,6 +63,8 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
     stiff, area, lump = laplacebeltrami_FEM(pos, faces)
     #stiff, area = LB_v2(pos, face)
     n = pos.shape[0]
+    device = pos.device
+    dtype = pos.dtype
 
     stiff.coalesce()
     area.coalesce()
@@ -79,8 +81,8 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
     #A_lumped = scipy.sparse.csr_matrix( (lump, (range(n),range(n))), shape=(n,n))
 
     eigvals, eigvecs = slinalg.eigsh(S, M=A, k=K, sigma=-1e-6)
-    eigvals = torch.tensor(eigvals)
-    eigvecs = torch.tensor(eigvecs)
+    eigvals = torch.tensor(eigvals, device=device, dtype=dtype)
+    eigvecs = torch.tensor(eigvecs, device=device, dtype=dtype))
     return eigvals, eigvecs
 
 def heat_kernel(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float) -> torch.Tensor:
