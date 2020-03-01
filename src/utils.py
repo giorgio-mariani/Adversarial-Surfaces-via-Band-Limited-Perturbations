@@ -82,7 +82,7 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
 
     eigvals, eigvecs = slinalg.eigsh(S, M=A, k=K, sigma=-1e-6)
     eigvals = torch.tensor(eigvals, device=device, dtype=dtype)
-    eigvecs = torch.tensor(eigvecs, device=device, dtype=dtype))
+    eigvecs = torch.tensor(eigvecs, device=device, dtype=dtype)
     return eigvals, eigvecs
 
 def heat_kernel(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float) -> torch.Tensor:
