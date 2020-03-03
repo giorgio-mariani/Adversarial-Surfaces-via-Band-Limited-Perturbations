@@ -265,7 +265,7 @@ class MCFAdversarialGenerator(SpectralAdversarialGenerator):
     return self.MCF_loss()
 
 #------------------------------------------------------------------------------
-class EuclideanAG(SpectralAdversarialGenerator):
+class EuclideanAdversarialGenerator(SpectralAdversarialGenerator):
   def __init__(self, pos, edges, faces, target, classifier, adversarial_coeff=1):
     super().__init__(pos=pos, edges=edges, faces=faces, target=target,
       classifier=classifier, adversarial_coeff=adversarial_coeff)
