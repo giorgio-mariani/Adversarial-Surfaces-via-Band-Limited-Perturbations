@@ -54,6 +54,8 @@ ri, ci = si.cpu().detach().numpy()
 sv = sv.cpu().detach().numpy()
 S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
 
+geo_error = scipy.io.loadmat("geodesic_error.mat",struct_as_record=False)
+
 ri,ci = ai.cpu().detach().numpy()
 av = av.cpu().detach().numpy()
 A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))

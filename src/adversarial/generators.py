@@ -12,14 +12,6 @@ import scipy.sparse
 import utils
 import mesh.laplacian
 
-'''
-class metric(object):
-  def __init__(self, function): 
-    self.function = function 
-      
-  def __call__(self, *args, **kwargs):
-    return self.function(*args, **kwargs)'''
-
 def metric(func):
   func.is_metric_decorator = True
   return func
@@ -121,7 +113,7 @@ class AdversarialGenerator(object):
     stiff_r, area_r = mesh.laplacian.LB_v2(perturbed_pos, self.faces)
     
     tmp = tsparse.spmm(*self.stiff, n, n, self.pos)
-    perturbed_tmp = tsparse.spmm(*self.stiff, n, n, perturbed_pos)
+    perturbed_tmp = tsparse.spmm(*stiff_r, n, n, perturbed_pos)
     
     ai, av = self.area
     ai_r, av_r = area_r
