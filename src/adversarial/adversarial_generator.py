@@ -70,33 +70,3 @@ def estimate_perturbation(
 
 ##-------------------------------------------------------------------------------
 #Measures
-
-  def LB_loss(pos, perturbed_pos, faces, stiff, area, perturbed_stiff, perturbed_area):
-    n = pos.shape[0]
-    ai, av = area
-    ai_r, av_r = perturbed_area
-    _,L = tsparse.spspmm(ai, torch.reciprocal(av), *stiff, n, n, n)
-    _,perturbed_L = tsparse.spspmm(ai_r, torch.reciprocal(av_r), *perturbed_stiff, n, n, n)
-    loss = torch.nn.functional.smooth_l1_loss(L, perturbed_L)
-    return loss
-
-  def euclidean_loss(pos, perturbed_pos):
-    return torch.norm(perturbed_pos - pos, p=2, dim=-1).sum()
-
-  def MC_loss(pos, perturbed_pos, stiff, area, perturbed_stiff, perturbed_area):
-    n = pos.shape[0]
-    tmp = tsparse.spmm(*stiff, n, n, pos)
-    perturbed_tmp = tsparse.spmm(*perturbed_stiff, n, n, perturbed_pos)
-    
-    ai, av = area
-    ai_r, av_r = perturbed_area
-
-    mcf = tsparse.spmm(ai, torch.reciprocal(av), n, n, tmp)
-    perturbed_mcf = tsparse.spmm(ai_r, torch.reciprocal(av_r), n, n, perturbed_tmp)
-    diff_norm = torch.norm(mcf - perturbed_mcf,p=2,dim=-1)
-    norm_integral = torch.dot(av, diff_norm)
-    
-    #a_diff = av-av_r
-    #area_loss = torch.dot(a_diff,a_diff).sqrt_()
-    loss = norm_integral
-    return loss
