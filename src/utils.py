@@ -98,6 +98,11 @@ def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
     n, k = eigvecs.shape
     device = eigvals.device
     dtype = eigvals.dtype
+    
+    hk = heat_kernel(eigvals, eigvecs,2*t)
+    tmp = torch.diag(hk).repeat(n, 1)
+    return tmp + tmp.t() -2*hk
+    '''
     D = torch.zeros([n,n], device=device, dtype=dtype)
     for i in tqdm.trange(k):
         eigvec = eigvecs[:,i].view(-1,1)
@@ -105,7 +110,7 @@ def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
         tmp = eigvec.repeat(1, n)
         tmp = tmp - tmp.t()
         D = D + torch.exp(-2*t*eigval)*(tmp*tmp)
-    return D
+    return D'''
 
 def compute_distance_mse(pos, perturbed_pos, faces, K, t):
     eigvals1, eigvecs1 = eigenpairs(pos, faces, K)
