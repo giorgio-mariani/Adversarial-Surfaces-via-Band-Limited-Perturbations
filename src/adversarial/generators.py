@@ -104,7 +104,12 @@ class AdversarialGenerator(object):
 
   @metric 
   def euclidean_loss(self):
-    return torch.norm(self.perturbed_pos - self.pos, p=2, dim=-1).sum()
+    #torch.norm(self.perturbed_pos - self.pos, p=2, dim=-1).sum()
+    diff = self.perturbed_pos - self.pos
+    _, av = self.area
+    vecl2sqr =  (diff**2).sum(dim=-1)
+    l2norm = torch.sqrt(torch.dot(av, vecl2sqr))
+    return l2norm
 
   @metric
   def MCF_loss(self):
