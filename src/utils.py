@@ -19,7 +19,7 @@ def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_t
       raise ValueError("The edge index matrix must have shape [#faces,3] and type long!")
 
 
-def get_spirals(
+def kNN(
   pos:torch.Tensor, 
   edges:torch.LongTensor,
   neighbors_num:int=256,
@@ -63,8 +63,7 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
         raise ValueError("Face indices must have shape [m,3]") 
   
     stiff, area, lump = laplacebeltrami_FEM(pos, faces)
-    #stiff, area = LB_v2(pos, faces)
-    
+      
     n = pos.shape[0]
     device = pos.device
     dtype = pos.dtype
@@ -80,8 +79,6 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int):
 
     ri,ci = ai
     A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
-
-    #A_lumped = scipy.sparse.csr_matrix( (lump, (range(n),range(n))), shape=(n,n))
 
     eigvals, eigvecs = slinalg.eigsh(S, M=A, k=K, sigma=-1e-6)
     eigvals = torch.tensor(eigvals, device=device, dtype=dtype)
@@ -102,15 +99,7 @@ def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
     hk = heat_kernel(eigvals, eigvecs,2*t)
     tmp = torch.diag(hk).repeat(n, 1)
     return tmp + tmp.t() -2*hk
-    '''
-    D = torch.zeros([n,n], device=device, dtype=dtype)
-    for i in tqdm.trange(k):
-        eigvec = eigvecs[:,i].view(-1,1)
-        eigval = eigvals[i]
-        tmp = eigvec.repeat(1, n)
-        tmp = tmp - tmp.t()
-        D = D + torch.exp(-2*t*eigval)*(tmp*tmp)
-    return D'''
+
 
 def compute_distance_mse(pos, perturbed_pos, faces, K, t):
     eigvals1, eigvecs1 = eigenpairs(pos, faces, K)
@@ -144,11 +133,7 @@ def MC_distortion(pos, perturbed_pos, stiff, area, perturbed_stiff, perturbed_ar
   perturbed_mcf = tsparse.spmm(ai_r, torch.reciprocal(av_r), n, n, perturbed_tmp)
   diff_norm = torch.norm(mcf - perturbed_mcf,p=2,dim=-1)
   norm_integral = torch.dot(av, diff_norm)
-  
-  #a_diff = av-av_r
-  #area_loss = torch.dot(a_diff,a_diff).sqrt_()
-
   return norm_integral
 
-def euclidean_distortion(pos, perturbed_pos):
+def L2_distortion(pos, perturbed_pos, area, perturbed_area):
   return torch.norm(perturbed_pos - pos, p=2, dim=-1).sum()

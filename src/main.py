@@ -5,9 +5,10 @@ import torch.nn.functional as func
 
 import models
 import train
-import adversarial.adversarial_generator as adv
+import adversarial.carlini_wagner as cw
 import mesh.laplacian
 import dataset
+import utils
 
 FAUST = "../../Downloads/Mesh-Datasets/MyFaustDataset"
 COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
@@ -18,15 +19,14 @@ PARAMS_FILE = "../model_data/data.pt"
 dataset_data = dataset.FaustDataset(FAUST)
 num_classes=dataset_data.num_classes
 
-model = models.ChebClassifier(
-    param_conv_layers=[64,64,32,32],
+model = models.ChebnetClassifier(
+    param_conv_layers=[128,128,64,64],
     D_t=dataset_data.downscale_matrices,
     E_t=dataset_data.downscaled_edges,
     num_classes = num_classes)
     
-sep = int(0.8*len(dataset_data))
-traindata = dataset_data[:sep]
-evaldata = dataset_data[sep:]
+traindata = dataset_data[20:]
+evaldata = dataset_data[:20]
 
 #train network
 train.train(
@@ -37,32 +37,21 @@ train.train(
 
 
 #compute accuracy
-#accuracy, confusion_matrix = train.evaluate(eval_data=evaldata,classifier=model)
-#print(accuracy)
+accuracy, confusion_matrix = train.evaluate(eval_data=evaldata,classifier=model)
+print(accuracy)
+import matplotlib.pyplot as plt 
+plt.matshow(confusion_matrix)
+#plt.show()
 
 i=20
 x = dataset_data[i].pos
 e = dataset_data[i].edge_index.t()
 f = dataset_data[i].face.t()
 y = dataset_data[i].y
+t = 2
 n = x.shape[0]
-eigs_num = 300
+eigs_num = 100
 
-import scipy
-(si, sv), (ai, av) = mesh.laplacian.LB_v2(pos=x, faces=f)
-ri, ci = si.cpu().detach().numpy()
-sv = sv.cpu().detach().numpy()
-S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
-
-geo_error = scipy.io.loadmat("geodesic_error.mat",struct_as_record=False)
-
-ri,ci = ai.cpu().detach().numpy()
-av = av.cpu().detach().numpy()
-A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
-e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
-
-eigvals = torch.tensor(e, device=x.device, dtype=x.dtype)
-eigvecs = torch.tensor(phi, device=x.device, dtype=x.dtype)
-
-print(eigvals.shape)
-print(eigvecs.shape)
+builder = cw.AdversarialExampleBuilder(model).set_log_interval(2)
+builder.set_perturbation_type("spectral").set_mesh(x,e,f).set_target(t).set_distortion_functions(cw.L2_distortion)
+adex = builder.set_adversarial_coeff(0.1).build(100, 8e-4, usetqdm="standard")

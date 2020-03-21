@@ -7,7 +7,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn import  ChebConv
 from torch_geometric.data import Data
 
-class ChebClassifier(torch.nn.Module):
+class ChebnetClassifier(torch.nn.Module):
     def __init__(
         self,
         param_conv_layers:List[int],
@@ -23,7 +23,7 @@ class ChebClassifier(torch.nn.Module):
          * num_classes: number of output classes of the classifier.
         """
 
-        super(ChebClassifier, self).__init__()
+        super(ChebnetClassifier, self).__init__()
         self.edge_indices = [E_t[i]._indices() for i in range(0,len(E_t))]
     
          # edge_indices is a list of tensor of shape [2, num_edges (at scale i)]
