@@ -1,3 +1,51 @@
+import os.path as osp
+from glob import glob
+
+import torch
+from torch_geometric.data import InMemoryDataset, extract_zip
+from torch_geometric.datasets import CoMA
+from torch_geometric.io import read_ply
+
+import dataset.downscale
+
+class CoMADataset(CoMA):
+    def __init__(self, root, train=True):
+        super(CoMA, self).__init__(root, None, None, None)
+        path = self.processed_paths[0] if train else self.processed_paths[1]
+        self.data, self.slices = torch.load(path)
+        
+        # create downscale matrices
+        self.downscale = dataset.downscale.DownscaleDelegate(self, ds_model_index=0)
+
+    def process(self):
+        folders = sorted(glob(osp.join(self.raw_dir, 'FaceTalk_*')))
+        if len(folders) == 0:
+            extract_zip(self.raw_paths[0], self.raw_dir, log=False)
+            folders = sorted(glob(osp.join(self.raw_dir, 'FaceTalk_*')))
+
+        train_data_list, test_data_list = [], []
+        for fi, folder in enumerate(folders):
+            for ci, category in enumerate(self.categories):
+                files = sorted(glob(osp.join(folder, category, '*.ply')))
+                for j, f in enumerate(files):
+                    data = read_ply(f)
+                    data.category = torch.tensor([ci], dtype=torch.long)
+                    data.subject = torch.tensor([fi], dtype=torch.long)
+                    if self.pre_filter is not None and\
+                       not self.pre_filter(data):
+                        continue
+                    if self.pre_transform is not None:
+                        data = self.pre_transform(data)
+
+                    if (j % 100) < 90:
+                        train_data_list.append(data)
+                    else:
+                        test_data_list.append(data)
+
+        torch.save(self.collate(train_data_list), self.processed_paths[0])
+        torch.save(self.collate(test_data_list), self.processed_paths[1])
+
+'''
 import os
 
 import numpy as np
@@ -9,6 +57,7 @@ import tqdm
 
 import mesh.decimation
 import dataset.downscale
+
 
 class ComaDataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, root:str):
@@ -73,4 +122,6 @@ class IndexDict(dict):
             self[key] = self._i
             self._i += 1
         return super().__getitem__(key)
+'''
+
 

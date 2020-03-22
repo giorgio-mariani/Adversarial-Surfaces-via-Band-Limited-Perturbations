@@ -59,122 +59,6 @@ class ValueLogger(object):
     plt.show()
 
 #------------------------------------------------------------------------------
-class AdversarialExampleBuilder(object):
-  def __init__(self, classifier:torch.nn.Module):
-    super().__init__()
-    self.adv_ex_data = dict()
-    self.adv_ex_data["classifier"] = classifier
-  
-  def set_mesh(self, pos, edges, faces):
-    self.adv_ex_data["pos"] = pos
-    self.adv_ex_data["edges"] = edges
-    self.adv_ex_data["faces"] = faces
-    return self
-
-  def set_adversarial_coeff(self,c):
-    self.adv_ex_data["adversarial_coeff"] = c
-    return self
-    
-  def set_target(self,t):
-    self.adv_ex_data["target"] = t
-    return self
-
-  def set_classifier(self, classifier):
-    self.adv_ex_data["classifier"] = classifier
-    return self
-
-  def set_perturbation_type(self, type:str, eigs_num:int=100):
-    if type == "vertex":
-      self.adv_ex_data["perturbation"] = Perturbation
-    elif type == "spectral":
-      self.adv_ex_data["perturbation"] = lambda x: SpectralPerturbation(x, eigs_num=eigs_num)
-    else:
-      raise ValueError("accepetd values: 'vertex', 'spectral'")
-    return self
-
-  def set_distortion_functions(self, dfun):
-    self.adv_ex_data["distortion"] = dfun
-    return self
-    
-  def set_log_interval(self, log_interval):
-    self.adv_ex_data["log_interval"] = log_interval
-    return self
-
-  def build(self,
-    iteration_number,
-    learning_rate:float=8e-6,
-    usetqdm:str=None,
-    logger:ValueLogger=None):
-
-    tmp = self.adv_ex_data
-    adex = AdversarialExample(
-      pos=tmp["pos"],
-      edges=tmp["edges"],
-      faces=tmp["faces"],
-      target=tmp["target"],
-      classifier=tmp["classifier"],
-      adversarial_coeff=tmp["adversarial_coeff"],
-      log_interval=tmp["log_interval"])
-    
-    adex.distortion_function = tmp["distortion"]
-    adex.perturbation = tmp["perturbation"](adex)
-    adversarial_loss = adex.optimize(
-      iter_num=iteration_number, 
-      lr=learning_rate, 
-      usetqdm=usetqdm, 
-      logger=logger)
-    return adex
-
-  def build_and_tune(self,
-    starting_coefficient=1,
-    search_iterations=10,
-    minimization_iterations=1000,
-    learning_rate:float=1e-4,
-    logger:ValueLogger=None) -> AdversarialExample:
-
-    range_min, range_max = 0, starting_coefficient
-    optimal_example = None 
-    increasing = True # flag used to detected whether it is the first phase or the second phase 
-
-    for i in range(search_iterations):
-      midvalue = (range_min+range_max)/2
-      c = range_max if increasing else midvalue
-
-      print("\nbinary search step: "+str(i+1))
-      print("range: [{},{}]\nc value: {}".format(range_min, range_max, c))
-      print("iterations per step: {}".format(minimization_iterations))
-      print("phase: "+ ("incrementing" if increasing else "search"))
-
-      adv_example = self.set_adversarial_coeff(c).build(
-        iterations_number=minimization_iterations, 
-        learning_rate=learning_rate,
-        logger=logger)
-      r = adv_example.perturbation.r
-      adv_example.adversarial_loss().item()
-
-      # update best estimation
-      if adv_example.is_successful:
-        optimal_example = adv_example
-
-      # update loop variables
-      if increasing and not adv_example.is_successful:
-        range_min = range_max
-        range_max = range_max*2
-      elif increasing and adv_example.is_successful:
-        increasing = False
-      else:
-        range_max = range_max if not adv_example.is_successful else midvalue
-        range_min = midvalue  if not adv_example.is_successful else range_min
-
-    # if unable to find a good c,r pair, return the best found solution
-    is_successful = optimal_example is not None
-    if not is_successful:
-      optimal_example = adv_example
-    return optimal_example
-
-
-
-#==============================================================================
 class AdversarialExample(object):
   def __init__(self,
       pos:torch.Tensor,
@@ -274,7 +158,124 @@ class AdversarialExample(object):
       loss.backward()
       optimizer.step()
 
-#------------------------------------------------------------------------------
+class AdversarialExampleBuilder(object):
+  def __init__(self):
+    super().__init__()
+    self.adv_ex_data = dict()
+    self.set_log_interval(10)
+    self.set_perturbation_type("spectral", 100)
+
+  def set_mesh(self, pos, edges, faces):
+    self.adv_ex_data["pos"] = pos
+    self.adv_ex_data["edges"] = edges
+    self.adv_ex_data["faces"] = faces
+    return self
+
+  def set_adversarial_coeff(self,c):
+    self.adv_ex_data["adversarial_coeff"] = c
+    return self
+    
+  def set_target(self,t):
+    self.adv_ex_data["target"] = t
+    return self
+
+  def set_classifier(self, classifier):
+    self.adv_ex_data["classifier"] = classifier
+    return self
+
+  def set_perturbation_type(self, type:str, eigs_num:int=100):
+    if type == "vertex":
+      self.adv_ex_data["perturbation"] = Perturbation
+    elif type == "spectral":
+      self.adv_ex_data["perturbation"] = lambda x: SpectralPerturbation(x, eigs_num=eigs_num)
+    else:
+      raise ValueError("accepetd values: 'vertex', 'spectral'")
+    return self
+
+  def set_distortion_function(self, dfun):
+    self.adv_ex_data["distortion"] = dfun
+    return self
+    
+  def set_log_interval(self, log_interval):
+    self.adv_ex_data["log_interval"] = log_interval
+    return self
+
+  def build(self,
+    iterations_number,
+    learning_rate:float=8e-6,
+    usetqdm:str=None,
+    logger:ValueLogger=None):
+    #TODO add checks on required fields
+
+    tmp = self.adv_ex_data
+    adex = AdversarialExample(
+      pos=tmp["pos"],
+      edges=tmp["edges"],
+      faces=tmp["faces"],
+      target=tmp["target"],
+      classifier=tmp["classifier"],
+      adversarial_coeff=tmp["adversarial_coeff"],
+      log_interval=tmp["log_interval"])
+    
+    adex.distortion_function = tmp["distortion"]
+    adex.perturbation = tmp["perturbation"](adex)
+    adversarial_loss = adex.optimize(
+      iter_num=iterations_number, 
+      lr=learning_rate, 
+      usetqdm=usetqdm, 
+      logger=logger)
+    return adex
+
+  def build_and_tune(self,
+    starting_coefficient=1,
+    search_iterations=10,
+    minimization_iterations=1000,
+    learning_rate:float=1e-4,
+    logger:ValueLogger=None) -> AdversarialExample:
+    #TODO add checks on required fields
+
+    range_min, range_max = 0, starting_coefficient
+    optimal_example = None 
+    increasing = True # flag used to detected whether it is the first phase or the second phase 
+
+    for i in range(search_iterations):
+      midvalue = (range_min+range_max)/2
+      c = range_max if increasing else midvalue
+
+      print("\nbinary search step: "+str(i+1))
+      print("range: [{},{}]\nc value: {}".format(range_min, range_max, c))
+      print("iterations per step: {}".format(minimization_iterations))
+      print("phase: "+ ("incrementing" if increasing else "search"))
+
+      adv_example = self.set_adversarial_coeff(c).build(
+        iterations_number=minimization_iterations, 
+        learning_rate=learning_rate,
+        logger=logger)
+      r = adv_example.perturbation.r
+      adv_example.adversarial_loss().item()
+
+      # update best estimation
+      if adv_example.is_successful:
+        optimal_example = adv_example
+
+      # update loop variables
+      if increasing and not adv_example.is_successful:
+        range_min = range_max
+        range_max = range_max*2
+      elif increasing and adv_example.is_successful:
+        increasing = False
+      else:
+        range_max = range_max if not adv_example.is_successful else midvalue
+        range_min = midvalue  if not adv_example.is_successful else range_min
+
+    # if unable to find a good c,r pair, return the best found solution
+    is_successful = optimal_example is not None
+    if not is_successful:
+      optimal_example = adv_example
+    return optimal_example
+
+#==============================================================================
+
 class Perturbation(object):
   def __init__(self, adv_example:AdversarialExample):
     super().__init__()
@@ -330,6 +331,7 @@ class SpectralPerturbation(object):
     pos, r = self.adv_example.pos, self.r
     return pos + self.eigvecs.matmul(r)
 
+
 # -----------------------------------------------------------------------------
 def LSM_regularizer(adv_example:AdversarialExample):
     n = adv_example.vertex_count
@@ -381,15 +383,11 @@ class LocallyEuclideanDistortion(object):
   def __init__(self, K=30):
     super().__init__()
     self.adv_example = None
+    self.kNN = None
     self.neighborhood = K
 
-  
-  def _check(self, adv_example):
-    if adv_example != self.adv_example:
-      raise ValueError("Input adversarial example is different from the instance's adversarial example!")
-
   def __call__(self, adv_example):
-    if self.adv_example is None:
+    if adv_example != self.adv_example:
       self.adv_example = adv_example
       self.kNN = utils.kNN(
         pos=adv_example.pos, 
@@ -397,7 +395,6 @@ class LocallyEuclideanDistortion(object):
         neighbors_num=self.neighborhood, 
         cutoff=5)
 
-    self._check(adv_example)
     n = adv_example.vertex_count
     pos = adv_example.pos
     ppos = adv_example.perturbed_pos
@@ -409,7 +406,6 @@ class LocallyEuclideanDistortion(object):
     dist_r = torch.norm(Xr-ppos.view(n,1,3), p=2,dim=-1)
     dist_loss = torch.nn.functional.smooth_l1_loss(dist, dist_r)
     return dist_loss
-
 
 
 '''

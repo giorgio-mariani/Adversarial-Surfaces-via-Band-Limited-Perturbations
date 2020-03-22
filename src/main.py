@@ -15,8 +15,8 @@ COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
 PARAMS_FILE = "../model_data/dataCOMA.pt"
 PARAMS_FILE = "../model_data/data.pt"
 
-#coma_data = dataset.ComaDataset(COMA)
-dataset_data = dataset.FaustDataset(FAUST)
+dataset_data = dataset.CoMADataset(COMA)
+#dataset_data = dataset.FaustDataset(FAUST)
 num_classes=dataset_data.num_classes
 
 model = models.ChebnetClassifier(
