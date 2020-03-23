@@ -15,18 +15,19 @@ COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
 PARAMS_FILE = "../model_data/dataCOMA.pt"
 PARAMS_FILE = "../model_data/data.pt"
 
-dataset_data = dataset.CoMADataset(COMA)
-#dataset_data = dataset.FaustDataset(FAUST)
-num_classes=dataset_data.num_classes
+#dataset_data = dataset.CoMADataset(COMA)
+
+
+traindata = dataset.FaustDataset(FAUST, train=True, test=False)
+testdata = dataset.FaustDataset(FAUST, train=False, test=True)
+num_classes = traindata.num_classes
+
 
 model = models.ChebnetClassifier(
     param_conv_layers=[128,128,64,64],
-    D_t=dataset_data.downscale_matrices,
-    E_t=dataset_data.downscaled_edges,
+    D_t=traindata.downscale_matrices,
+    E_t=traindata.downscaled_edges,
     num_classes = num_classes)
-    
-traindata = dataset_data[20:]
-evaldata = dataset_data[:20]
 
 #train network
 train.train(
@@ -37,17 +38,17 @@ train.train(
 
 
 #compute accuracy
-accuracy, confusion_matrix = train.evaluate(eval_data=evaldata,classifier=model)
+accuracy, confusion_matrix = train.evaluate(eval_data=testdata,classifier=model)
 print(accuracy)
 import matplotlib.pyplot as plt 
 plt.matshow(confusion_matrix)
 #plt.show()
 
 i=20
-x = dataset_data[i].pos
-e = dataset_data[i].edge_index.t()
-f = dataset_data[i].face.t()
-y = dataset_data[i].y
+x = traindata[i].pos
+e = traindata[i].edge_index.t()
+f = traindata[i].face.t()
+y = traindata[i].y
 t = 2
 n = x.shape[0]
 eigs_num = 100

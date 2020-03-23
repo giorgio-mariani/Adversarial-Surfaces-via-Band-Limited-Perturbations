@@ -5,38 +5,27 @@ import tqdm
 import torch
 from torch_geometric.data import Dataset
 
-import mesh.transforms
-
 def train(
     train_data:Dataset, 
     classifier:torch.nn.Module,
     param_file:str,
-    device:torch.device=None,
     epoch_number:int = 1,
-    rotate=True,
-    translate=True):
+    learning_rate:float=1e-3):
 
     if os.path.exists(param_file):
         classifier.load_state_dict(torch.load(param_file))
-
-    device = torch.device('cpu') if device is None else device
-
+        
     # meters
     loss_values = []
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-3, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(classifier.parameters(), lr=learning_rate, weight_decay=5e-4)
     
-    traindata_gtruth = [mesh.y.to(device) for mesh in train_data]
-    traindata_pos = [mesh.pos.to(device) for mesh in train_data]
+    traindata_gtruth = [mesh.y for mesh in train_data]
+    traindata_pos = [mesh.pos for mesh in train_data]
 
     # train module
     classifier.train()
     for epoch in range(epoch_number):
-        # randomize position and rotation of mesh
-        for x in traindata_pos :
-            if translate: mesh.transforms.transform_translation_(x)
-            if rotate: mesh.transforms.transform_rotation_(x)
-        
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
         for i in tqdm.trange(len(train_data)):
@@ -60,23 +49,14 @@ def train(
 def evaluate(
     eval_data:Dataset, 
     classifier:torch.nn.Module,
-    device:torch.device=None,
-    rotate=True,
-    translate=True,
     epoch_number=1):
 
-    device = torch.device('cpu') if device is None else device
-
     classifier.eval()
-    evaldata_pos = [mesh.pos.to(device) for mesh in eval_data]
+    evaldata_pos = [mesh.pos for mesh in eval_data]
     evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
 
     confusion = None
     for epoch in range(epoch_number):
-        for x in evaldata_pos :
-            if translate: mesh.transforms.transform_translation_(x)
-            if rotate: mesh.transforms.transform_rotation_(x)
-
         for i in tqdm.trange(len(eval_data)):
             x = evaldata_pos[i]
             y = evaldata_gtruth[i]

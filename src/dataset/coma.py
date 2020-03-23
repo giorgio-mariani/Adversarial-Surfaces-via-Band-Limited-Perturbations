@@ -1,5 +1,6 @@
 import os.path as osp
 from glob import glob
+import random
 
 import torch
 from torch_geometric.data import InMemoryDataset, extract_zip
@@ -9,10 +10,14 @@ from torch_geometric.io import read_ply
 import dataset.downscale
 
 class CoMADataset(CoMA):
-    def __init__(self, root, train=True):
+    def __init__(self, root, train=True, category_samples=50, test_categories=[0,1]):
+        self.test_categories = test_categories
+        self.category_samples = category_samples
         super(CoMA, self).__init__(root, None, None, None)
         path = self.processed_paths[0] if train else self.processed_paths[1]
         self.data, self.slices = torch.load(path)
+        self.data.y = self.data.subject
+        self.slices["y"] = self.slices["subject"]
         
         # create downscale matrices
         self.downscale = dataset.downscale.DownscaleDelegate(self, ds_model_index=0)
@@ -27,6 +32,7 @@ class CoMADataset(CoMA):
         for fi, folder in enumerate(folders):
             for ci, category in enumerate(self.categories):
                 files = sorted(glob(osp.join(folder, category, '*.ply')))
+                files = random.sample(files, k=min(self.category_samples, len(files)))
                 for j, f in enumerate(files):
                     data = read_ply(f)
                     data.category = torch.tensor([ci], dtype=torch.long)
@@ -37,7 +43,7 @@ class CoMADataset(CoMA):
                     if self.pre_transform is not None:
                         data = self.pre_transform(data)
 
-                    if (j % 100) < 90:
+                    if not ci in self.test_categories:
                         train_data_list.append(data)
                     else:
                         test_data_list.append(data)
