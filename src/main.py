@@ -15,7 +15,8 @@ COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
 PARAMS_FILE = "../model_data/dataCOMA.pt"
 PARAMS_FILE = "../model_data/data.pt"
 
-#dataset_data = dataset.CoMADataset(COMA)
+#traindata = dataset.CoMADataset(COMA)
+#traindata = dataset.FaustAugmented(FAUST, train=True, test=False)
 
 traindata = dataset.FaustDataset(FAUST, train=True, test=False)
 testdata = dataset.FaustDataset(FAUST, train=False, test=True)
@@ -26,13 +27,14 @@ model = models.ChebnetClassifier(
     param_conv_layers=[128,128,64,64],
     D_t=traindata.downscale_matrices,
     E_t=traindata.downscaled_edges,
-    num_classes = num_classes)
+    num_classes = num_classes,
+    parameters_file=PARAMS_FILE)
 
 #train network
 train.train(
     train_data=traindata,
     classifier=model,
-    param_file=PARAMS_FILE,
+    parameters_file=PARAMS_FILE,
     epoch_number=0)
 
 
@@ -52,6 +54,6 @@ t = 2
 n = x.shape[0]
 eigs_num = 100
 
-builder = cw.AdversarialExampleBuilder(model).set_log_interval(2)
-builder.set_perturbation_type("spectral").set_mesh(x,e,f).set_target(t).set_distortion_functions(cw.L2_distortion)
-adex = builder.set_adversarial_coeff(0.1).build(1000, 8e-4, usetqdm="standard")
+builder = cw.AdversarialExampleBuilder().set_classifier(model).set_log_interval(2)
+builder.set_perturbation_type("spectral").set_mesh(x,e,f).set_target(t).set_distortion_function(cw.L2_distortion)
+adex = builder.set_adversarial_coeff(0.1).build(100, 8e-4, usetqdm="standard")

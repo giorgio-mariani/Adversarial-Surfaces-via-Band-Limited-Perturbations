@@ -69,6 +69,8 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             f2e(mesh)
             data_list.append(mesh)
         data, slices = self.collate(data_list)
+        if not os.path.exists(self.processed_dir):
+            os.mkdir(path)
         torch.save( (data, slices), self.processed_paths[0])
 
     @property

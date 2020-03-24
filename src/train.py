@@ -8,12 +8,9 @@ import tqdm
 def train(
     train_data:Dataset, 
     classifier:torch.nn.Module,
-    param_file:str,
+    parameters_file:str,
     epoch_number:int = 1,
     learning_rate:float=1e-3):
-
-    if os.path.exists(param_file):
-        classifier.load_state_dict(torch.load(param_file))
         
     # meters
     loss_values = []
@@ -43,7 +40,7 @@ def train(
             optimizer.step()
 
     # save the model's parameters
-    torch.save(classifier.state_dict(), param_file)
+    torch.save(classifier.state_dict(), parameters_file)
     return loss_values
 
 def evaluate(

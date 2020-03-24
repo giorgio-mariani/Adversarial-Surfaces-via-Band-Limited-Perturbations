@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 import torch.nn
@@ -13,7 +14,9 @@ class ChebnetClassifier(torch.nn.Module):
         param_conv_layers:List[int],
         E_t:List[torch.Tensor],
         D_t:List[torch.sparse.FloatTensor],
-        num_classes:int, K=6):
+        num_classes:int, 
+        parameters_file=None,
+        K=6):
         """
         arguments:
          * param_conv_layers: number of output features for the all the convolutional
@@ -40,11 +43,16 @@ class ChebnetClassifier(torch.nn.Module):
             self.conv.append(chebconv)
             self.add_module("chebconv_"+str(i), chebconv)
 
-
         # dense layer
         self.linear = torch.nn.Linear(
             self.downscale_matrices[-1].shape[0]*param_conv_layers[-1],
             num_classes)
+
+        if parameters_file is not None:
+            if os.path.exists(parameters_file):
+                self.load_state_dict(torch.load(parameters_file))
+            else: 
+                print("Warning parameters file {} is non-existent".format(parameters_file))
 
     def forward(self, x:torch.Tensor):
         # apply chebyshev convolution and pooling layers
