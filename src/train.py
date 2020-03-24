@@ -1,9 +1,9 @@
 import os
 from collections import Counter
 
-import tqdm
 import torch
 from torch_geometric.data import Dataset
+import tqdm
 
 def train(
     train_data:Dataset, 

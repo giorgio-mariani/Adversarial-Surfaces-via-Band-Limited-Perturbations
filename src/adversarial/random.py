@@ -1,6 +1,7 @@
 import random
-import tqdm
 from collections import namedtuple
+
+import tqdm
 from torch_geometric.data import  Dataset
 
 import utils
