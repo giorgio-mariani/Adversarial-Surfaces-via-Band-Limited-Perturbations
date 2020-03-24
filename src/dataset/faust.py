@@ -21,13 +21,15 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
 
         def to_device(mesh:torch_geometric.data.Data):
             mesh.pos = mesh.pos.to(device)
+            mesh.y = mesh.y.to(device)
             return mesh
 
         if transform_data:
             # rotate and move
             transform = transforms.Compose([
                 Move(mean=[0,0,0], std=[0.05,0.05,0.05]), 
-                Rotate(dims=[0,1,2])])
+                Rotate(dims=[0,1,2]), 
+                to_device])
 
             # center each mesh into its centroid
             pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
@@ -85,7 +87,10 @@ class FaustAugmented(FaustDataset):
     device:torch.device = torch.device("cpu"),
     train:bool=True, test:bool=True,
     transform_data:bool=True):
-    super().__init__(root=root, train=True,test=True)
+    super().__init__(root=root, 
+        device=device, 
+        transform_data=transform_data, 
+        train=True, test=True)
     data_aug, slices_aug = torch.load(self.processed_paths[1])
     data, slices = self.data, self.slices
     

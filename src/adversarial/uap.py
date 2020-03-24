@@ -23,6 +23,7 @@ def UAP_computation(
     delta:float, 
     eps:float, model):
 
+    #filter data:
     v = torch.zeros([6890, 3])
     while error(data) <= (1-delta):
         for meshi in data:
