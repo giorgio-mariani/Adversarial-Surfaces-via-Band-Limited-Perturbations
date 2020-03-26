@@ -45,6 +45,7 @@ import matplotlib.pyplot as plt
 plt.matshow(confusion_matrix)
 #plt.show()
 
+'''
 i=20
 x = traindata[i].pos
 e = traindata[i].edge_index.t()
@@ -57,3 +58,19 @@ eigs_num = 100
 builder = cw.AdversarialExampleBuilder().set_classifier(model).set_log_interval(2)
 builder.set_perturbation_type("spectral").set_mesh(x,e,f).set_target(t).set_distortion_function(cw.L2_distortion)
 adex = builder.set_adversarial_coeff(0.1).build(100, 8e-4, usetqdm="standard")
+'''
+
+import adversarial.uap as uap
+
+
+builder = cw.AdversarialExampleBuilder().set_classifier(model).set_log_interval(2)
+builder.set_perturbation_type("spectral").set_distortion_function(cw.L2_distortion)
+
+uap.UAP_computation(
+    data=testdata,
+    adv_builder=builder,
+    classifier=model,
+    delta=0.5,
+    eps=1,
+    starting_coeff=1e-3,
+    learning_rate=8e-4)
