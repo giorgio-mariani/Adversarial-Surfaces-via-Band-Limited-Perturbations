@@ -16,7 +16,9 @@ def error(data, classifier, v):
     for m in data:
         x, y = m.pos, m.y
         if _pred(classifier(x+v)) != y: s+=1
-    return s/len(data)
+    error = s/len(data)
+    print("mean error: {}".format(error))
+    return error
 
 
 def projection(v, r, eps):
@@ -34,7 +36,9 @@ def UAP_computation(
     learning_rate:float):
 
     device = data[0].pos.device
+    typefloat = data[0].pos.dtype
     shape = data[0].pos.shape
+
     #filter data:
     filter_index = torch.tensor(
         [i for i in range(len(data)) if _pred(classifier(data[i].pos)) == data[i].y],
@@ -42,16 +46,13 @@ def UAP_computation(
     data = data[filter_index]
 
     # start universal adversarial perturbation computation
-    v = torch.zeros(shape)
+    v = torch.zeros(shape, dtype=typefloat, device=device)
     while error(data, classifier, v) <= (1-delta):
         for mi in tqdm.tqdm(data):
             xi = mi.pos
-            ei = mi.edge_index.t()
-            fi = mi.face.t()
+            ei = mi.edge_index.t().to(device)
+            fi = mi.face.t().to(device)
             yi = mi.y
-
-            # if the classifier is incorrect skip the next steps
-            if  _pred(classifier(xi)) != yi: continue
             
             if _pred(classifier(xi + v)) == yi:
                 #Compute the minimal perturbation that sends xi + v 
@@ -60,10 +61,10 @@ def UAP_computation(
                 adv_builder.set_target(_target(classifier(xi + v)))
                 adex = adv_builder.build_and_tune(
                     starting_coefficient=starting_coeff,
-                    search_iterations=5,
-                    minimization_iterations=30,
+                    search_iterations=2,
+                    minimization_iterations=2,
                     learning_rate=learning_rate)
-                r = xi - adex.perturbed_pos
+                r = (xi - adex.perturbed_pos).detach()
                 
                 #Update the perturbation:
                 v = projection(v, r, eps)

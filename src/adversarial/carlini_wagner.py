@@ -242,11 +242,8 @@ class AdversarialExampleBuilder(object):
       midvalue = (range_min+range_max)/2
       c = range_max if increasing else midvalue
 
-      print("\nbinary search step: "+str(i+1))
-      print("range: [{},{}]\nc value: {}".format(range_min, range_max, c))
-      print("iterations per step: {}".format(minimization_iterations))
-      print("phase: "+ ("incrementing" if increasing else "search"))
-
+      print("[{},{}] ; c={}".format(range_min, range_max, c))
+      
       adv_example = self.set_adversarial_coeff(c).build(
         iterations_number=minimization_iterations, 
         learning_rate=learning_rate,
