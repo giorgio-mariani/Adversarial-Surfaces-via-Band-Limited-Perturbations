@@ -18,7 +18,7 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
         device:torch.device=torch.device("cpu"),
         train:bool=True, test:bool=True,
         transform_data:bool=True):
-
+        self.url = 'http://faust.is.tue.mpg.de/'
         def to_device(mesh:torch_geometric.data.Data):
             mesh.pos = mesh.pos.to(device)
             mesh.y = mesh.y.to(device)
@@ -38,7 +38,6 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             super().__init__(root=root, transform=to_device)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.url = 'http://faust.is.tue.mpg.de/'
         self.ds_delegate = dscale.DownscaleDelegate(self)
 
         if train and not test:

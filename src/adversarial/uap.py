@@ -2,13 +2,14 @@
 import torch
 import tqdm
 
+import adversarial.iterative_gradient as ig
+from mesh.laplacian import LB_v2
+import utils
+
+
 def _pred(Z):
     _, index = torch.sort(Z, dim=0)
     return index[-1]
-
-def _target(Z):
-    _, index = torch.sort(Z, dim=0)
-    return index[-2]
 
 def error(data, classifier, v):
     #percentage of misclassified data
@@ -28,12 +29,10 @@ def projection(v, r, eps):
 
 def UAP_computation(
     data,
-    adv_builder,
     classifier,
     delta:float,
     eps:float,
-    starting_coeff:float,
-    learning_rate:float):
+    K=30):
 
     device = data[0].pos.device
     typefloat = data[0].pos.dtype
@@ -57,14 +56,14 @@ def UAP_computation(
             if _pred(classifier(xi + v)) == yi:
                 #Compute the minimal perturbation that sends xi + v 
                 # to the decision boundary:
-                adv_builder.set_mesh(xi+v, ei, fi)
-                adv_builder.set_target(_target(classifier(xi + v)))
-                adex = adv_builder.build_and_tune(
-                    starting_coefficient=starting_coeff,
-                    search_iterations=2,
-                    minimization_iterations=2,
-                    learning_rate=learning_rate)
-                r = (xi - adex.perturbed_pos).detach()
+                _,(_,areas) = LB_v2(xi+v, fi)
+                eigvals, eigvecs = utils.eigenpairs(xi+v, fi,K=K)
+                xi_adversarial =ig.fast_gradient(
+                    classifier=classifier,
+                    x=xi+v, y=yi,
+                    eigvecs=eigvecs,
+                    areavec=areas)
+                r = (xi - xi_adversarial).detach()
                 
                 #Update the perturbation:
                 v = projection(v, r, eps)

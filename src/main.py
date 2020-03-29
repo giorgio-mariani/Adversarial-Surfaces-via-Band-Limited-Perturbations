@@ -15,9 +15,6 @@ COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
 PARAMS_FILE = "../model_data/dataCOMA.pt"
 PARAMS_FILE = "../model_data/data.pt"
 
-#traindata = dataset.CoMADataset(COMA)
-#traindata = dataset.FaustAugmented(FAUST, train=True, test=False)
-
 traindata = dataset.FaustDataset(FAUST, train=True, test=False)
 testdata = dataset.FaustDataset(FAUST, train=False, test=True)
 num_classes = traindata.num_classes
@@ -41,12 +38,8 @@ train.train(
 #compute accuracy
 accuracy, confusion_matrix = train.evaluate(eval_data=testdata,classifier=model)
 print(accuracy)
-import matplotlib.pyplot as plt 
-plt.matshow(confusion_matrix)
-#plt.show()
 
-'''
-i=20
+i = 20
 x = traindata[i].pos
 e = traindata[i].edge_index.t()
 f = traindata[i].face.t()
@@ -55,9 +48,15 @@ t = 2
 n = x.shape[0]
 eigs_num = 100
 
-builder = cw.AdversarialExampleBuilder().set_classifier(model).set_log_interval(2)
-builder.set_perturbation_type("spectral").set_mesh(x,e,f).set_target(t).set_distortion_function(cw.L2_distortion)
+builder = cw.AdversarialExampleBuilder().set_log_interval(2)
+builder.set_classifier(model)
+builder.set_perturbation_type("spectral", eigs_num=eigs_num)
+builder.set_mesh(x,e,f)
+builder.set_target(t)
+builder.set_distortion_function(cw.L2_distortion)
+builder.set_adversarial_coeff(10)
 adex = builder.set_adversarial_coeff(0.1).build(100, 8e-4, usetqdm="standard")
+
 '''
 
 import adversarial.uap as uap
@@ -74,3 +73,4 @@ uap.UAP_computation(
     eps=1,
     starting_coeff=1e-3,
     learning_rate=8e-4)
+'''
