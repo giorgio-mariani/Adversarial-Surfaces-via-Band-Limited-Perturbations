@@ -3,11 +3,11 @@ import tqdm
 import torch 
 import torch.nn.functional as func
 
+import adversarial.carlini_wagner as cw
+import adversarial.iterative_gradient as it
+import dataset
 import models
 import train
-import adversarial.carlini_wagner as cw
-import mesh.laplacian
-import dataset
 import utils
 
 FAUST = "../../Downloads/Mesh-Datasets/MyFaustDataset"
@@ -17,14 +17,12 @@ PARAMS_FILE = "../model_data/data.pt"
 
 traindata = dataset.FaustDataset(FAUST, train=True, test=False)
 testdata = dataset.FaustDataset(FAUST, train=False, test=True)
-num_classes = traindata.num_classes
-traindata[0]
 
 model = models.ChebnetClassifier(
     param_conv_layers=[128,128,64,64],
     D_t=traindata.downscale_matrices,
     E_t=traindata.downscaled_edges,
-    num_classes = num_classes,
+    num_classes = traindata.num_classes,
     parameters_file=PARAMS_FILE)
 
 #train network
@@ -48,29 +46,14 @@ t = 2
 n = x.shape[0]
 eigs_num = 100
 
-builder = cw.AdversarialExampleBuilder().set_log_interval(2)
-builder.set_classifier(model)
-builder.set_perturbation_type("spectral", eigs_num=eigs_num)
-builder.set_mesh(x,e,f)
-builder.set_target(t)
-builder.set_distortion_function(cw.L2_distortion)
-builder.set_adversarial_coeff(10)
-adex = builder.set_adversarial_coeff(0.1).build(100, 8e-4, usetqdm="standard")
+# targeted attack using C&W method
+logger = cw.ValueLogger({"adversarial": lambda x:x.adversarial_loss()})
+builder = cw.CWBuilder()
+builder.set_classifier(model).set_mesh(x,e,f).set_target(t)
 
-'''
+builder.set_distortion_function(cw.LB_distortion).set_perturbation_type("spectral", eigs_num=eigs_num)
+builder.set_minimization_iterations(0).set_adversarial_coeff(0.1)
+adex_cw = builder.build(usetqdm="standard")
 
-import adversarial.uap as uap
-
-
-builder = cw.AdversarialExampleBuilder().set_classifier(model).set_log_interval(2)
-builder.set_perturbation_type("spectral").set_distortion_function(cw.L2_distortion)
-
-uap.UAP_computation(
-    data=testdata,
-    adv_builder=builder,
-    classifier=model,
-    delta=0.5,
-    eps=1,
-    starting_coeff=1e-3,
-    learning_rate=8e-4)
-'''
+# untargeted attack using FGSM
+adex_it = it.FGSMBuilder().set_classifier(model).set_mesh(x,e,f).build()

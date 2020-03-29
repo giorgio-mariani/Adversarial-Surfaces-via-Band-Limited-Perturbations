@@ -18,6 +18,10 @@ def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_t
     if len(faces.shape) != 2 or faces.shape[1] != 3 or faces.dtype != torch.long:
       raise ValueError("The edge index matrix must have shape [#faces,3] and type long!")
 
+def prediction(classifier:torch.nn.Module, x:torch.Tensor):
+  Z = classifier(x)
+  prediction = Z.argmax()
+  return prediction
 
 def kNN(
   pos:torch.Tensor, 

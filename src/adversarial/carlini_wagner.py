@@ -12,17 +12,25 @@ import scipy.sparse
 
 import utils
 import mesh.laplacian
+from .base import AdversarialExample, Builder
 
 
 #------------------------------------------------------------------------------
 class ValueLogger(object):
-  def __init__(self, value_functions:dict=None):
+  def __init__(self, value_functions:dict=None, log_interval:int=10):
     super().__init__()
     self.logged_values =  dict()
     self.obj2name = dict()
     self.value_functions = value_functions if value_functions is not None else dict()
-    for n,f in value_functions.items():
+    self.log_interval=log_interval
+
+    #initialize logging metrics
+    for n,f in self.value_functions.items():
       self.add_value_name(n,f)
+
+  def reset(self):
+    for func, values in self.value_functions.items():
+      values.clear()
 
   def add_value_name(self, name=None, obj=None):
     if obj == None and name == None:
@@ -45,10 +53,11 @@ class ValueLogger(object):
     else:
       raise ValueError("invalid input name")
 
-  def log(self, adv_example):
-    for n,f in self.value_functions.items():
-      v = f(adv_example).item()
-      self.add_scalar(n,v)
+  def log(self, adv_example, iteration):
+    if self.log_interval != 0 and iteration % self.log_interval == 0:
+      for n,f in self.value_functions.items():
+        v = f(adv_example).item()
+        self.add_scalar(n,v)
 
   def show(self):
     plt.figure()
@@ -59,44 +68,38 @@ class ValueLogger(object):
     plt.show()
 
 #------------------------------------------------------------------------------
-class AdversarialExample(object):
+class CWAdversarialExample(AdversarialExample):
   def __init__(self,
-      pos:torch.Tensor,
-      edges:torch.LongTensor,
-      faces:torch.LongTensor,
-      target:int,
-      classifier:torch.nn.Module,
-      adversarial_coeff:float=1,
-      log_interval:int=10):
-    super().__init__()
-    utils.check_data(pos, edges, faces, float_type=torch.float)
-    float_type = pos.dtype
+    pos:torch.Tensor,
+    edges:torch.LongTensor,
+    faces:torch.LongTensor,
+    classifier:torch.nn.Module,
+    target:int=None,
+    adversarial_coeff:float=1,
+    logger:ValueLogger=ValueLogger(),
+    minimization_iterations:int=100,
+    learning_rate:float=5e-5,
+    k:float=0):
 
-    self.pos = pos
-    self.faces = faces
-    self.edges = edges
-    self.adversarial_coeff = torch.tensor([adversarial_coeff], device=pos.device, dtype=pos.dtype)
-    self.target = torch.tensor([target], device=pos.device, dtype=torch.long)
-    self.classifier = classifier
+    super().__init__(
+        pos=pos, edges=edges, faces=faces,
+        classifier=classifier, target=target)
+      
+    self.k = torch.tensor([k], device=self.device, dtype=self.dtype)
+    self.adversarial_coeff = torch.tensor([adversarial_coeff], device=self.device, dtype=self.dtype)
+    self.minimization_iterations = minimization_iterations
+    self.learning_rate = learning_rate
+    self.logger = logger
 
-    #constants
-    self.vertex_count = pos.shape[0]
-    self.edge_count = edges.shape[0]
-    self.face_count = faces.shape[0]
-
-    # compute useful data
-    self.laplacian = tgeo.utils.get_laplacian(edges.t(), normalization="rw")
-    self.stiff, self.area = mesh.laplacian.LB_v2(self.pos, self.faces)
+    # for untargeted-attacks use second most probable class    
+    if target is None:
+      Z = self.classifier(self.pos)
+      values, index = torch.sort(Z, dim=0)
+      self.target = index[-2] 
 
     # class components
     self.perturbation = None
     self.distortion_function = None
-    self.logger = None
-
-    # other info
-    self._iteration = None
-    self._zero = torch.zeros([1], device=pos.device, dtype=pos.dtype)
-    self.log_interval = log_interval
 
   @property
   def device(self):  return self.pos.device
@@ -118,163 +121,128 @@ class AdversarialExample(object):
     values, index = torch.sort(Z, dim=0)
     argmax = index[-1] if index[-1] != self.target else index[-2] # max{Z(i): i != target}
     Ztarget, Zmax = Z[self.target], Z[argmax]
-    return torch.max(Zmax - Ztarget, self._zero)
+    return torch.max(Zmax - Ztarget, -self.k)
 
   def total_loss(self):
     loss = self.adversarial_coeff*self.adversarial_loss() + self.distortion_function(self)
-
-    # add measures
-    if (self._iteration % self.log_interval == 0):
-      self.logger.log(self)
     return loss
 
-  def optimize(self,
-    iter_num:int=1000,
-    lr:float=8e-6,
-    usetqdm:str=None,
-    logger:ValueLogger=None) -> torch.Tensor:
+  def compute(self, usetqdm:str=None):
     # reset variables
     self.perturbation.reset()
-    self._iteration = 0
-    self.logger = logger if logger is not None else ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
+    self.logger.reset() #ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
 
     # compute gradient w.r.t. the perturbation
-    optimizer = torch.optim.Adam([self.perturbation.r], lr=lr)
+    optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate)
     self.classifier.eval()
 
     if usetqdm is None or usetqdm == False:
-      iterations =  range(iter_num)
+      iterations =  range(self.minimization_iterations)
     elif usetqdm == "standard" or usetqdm == True:
-      iterations = tqdm.trange(iter_num)
+      iterations = tqdm.trange(self.minimization_iterations)
     elif usetqdm == "notebook":
-      iterations = tqdm.tqdm_notebook(range(iter_num))
+      iterations = tqdm.tqdm_notebook(range(self.minimization_iterations))
     else:
       raise ValueError("Invalid input for 'usetqdm', valid values are: None, 'standard' and 'notebook'.")
 
     for i in iterations:
-      self._iteration += 1
+      # compute loss
       optimizer.zero_grad()
       loss = self.total_loss()
+      self.logger.log(self, i) #log results
+      
+      # backpropagate
       loss.backward()
       optimizer.step()
 
-class AdversarialExampleBuilder(object):
-  def __init__(self):
+class CWBuilder(Builder):
+  def __init__(self, search_iterations=1):
     super().__init__()
-    self.adv_ex_data = dict()
-    self.set_log_interval(10)
-    self.set_perturbation_type("spectral", 100)
-
-  def set_mesh(self, pos, edges, faces):
-    self.adv_ex_data["pos"] = pos
-    self.adv_ex_data["edges"] = edges
-    self.adv_ex_data["faces"] = faces
-    return self
+    self.adex_data = dict()
+    self.adex_functions = dict()
+    self.search_iterations = search_iterations
 
   def set_adversarial_coeff(self,c):
-    self.adv_ex_data["adversarial_coeff"] = c
-    return self
-    
-  def set_target(self,t):
-    self.adv_ex_data["target"] = t
-    return self
-
-  def set_classifier(self, classifier):
-    self.adv_ex_data["classifier"] = classifier
+    self.adex_data["adversarial_coeff"] = c
     return self
 
   def set_perturbation_type(self, type:str, eigs_num:int=100):
     if type == "vertex":
-      self.adv_ex_data["perturbation"] = Perturbation
+      self.adex_functions["perturbation"] = Perturbation
     elif type == "spectral":
-      self.adv_ex_data["perturbation"] = lambda x: SpectralPerturbation(x, eigs_num=eigs_num)
+      self.adex_functions["perturbation"] = lambda x: SpectralPerturbation(x, eigs_num=eigs_num)
     else:
       raise ValueError("accepetd values: 'vertex', 'spectral'")
     return self
 
   def set_distortion_function(self, dfun):
-    self.adv_ex_data["distortion"] = dfun
+    self.adex_functions["distortion"] = dfun
     return self
-    
-  def set_log_interval(self, log_interval):
-    self.adv_ex_data["log_interval"] = log_interval
+  
+  def set_logger(self, logger):
+    self.adex_data["logger"] = logger
     return self
 
-  def build(self,
-    iterations_number,
-    learning_rate:float=8e-6,
-    usetqdm:str=None,
-    logger:ValueLogger=None):
-    #TODO add checks on required fields
+  def set_minimization_iterations(self, minimization_iterations):
+    self.adex_data["minimization_iterations"] = minimization_iterations
+    return self
 
-    tmp = self.adv_ex_data
-    adex = AdversarialExample(
-      pos=tmp["pos"],
-      edges=tmp["edges"],
-      faces=tmp["faces"],
-      target=tmp["target"],
-      classifier=tmp["classifier"],
-      adversarial_coeff=tmp["adversarial_coeff"],
-      log_interval=tmp["log_interval"])
-    
-    adex.distortion_function = tmp["distortion"]
-    adex.perturbation = tmp["perturbation"](adex)
-    adversarial_loss = adex.optimize(
-      iter_num=iterations_number, 
-      lr=learning_rate, 
-      usetqdm=usetqdm, 
-      logger=logger)
-    return adex
+  def set_learning_rate(self, learning_rate):
+    self.adex_data["learning_rate"] = learning_rate
+    return self
 
-  def build_and_tune(self,
-    starting_coefficient=1,
-    search_iterations=10,
-    minimization_iterations=1000,
-    learning_rate:float=1e-4,
-    logger:ValueLogger=None) -> AdversarialExample:
-    #TODO add checks on required fields
+  def set_k(self, k):
+    self.adex_data["k"] = k
+    return self
 
-    range_min, range_max = 0, starting_coefficient
+  def build(self, usetqdm:str=None) -> AdversarialExample:
+    # exponential search variable
+    range_min, range_max = 0, self.adex_data["adversarial_coeff"]
     optimal_example = None 
     increasing = True # flag used to detected whether it is the first phase or the second phase 
 
-    for i in range(search_iterations):
+    # start exponential search
+    for i in range(self.search_iterations):
       midvalue = (range_min+range_max)/2
       c = range_max if increasing else midvalue
 
       print("[{},{}] ; c={}".format(range_min, range_max, c))
       
-      adv_example = self.set_adversarial_coeff(c).build(
-        iterations_number=minimization_iterations, 
-        learning_rate=learning_rate,
-        logger=logger)
-      r = adv_example.perturbation.r
-      adv_example.adversarial_loss().item()
+      # create adversarial example
+      self.set_adversarial_coeff(c)
+      adex = CWAdversarialExample(**self.adex_data)
+      
+      adex.distortion_function = self.adex_functions["distortion"]
+      adex.perturbation = self.adex_functions["perturbation"](adex)
+      adex.compute(usetqdm=usetqdm)
+
+      # get perturbation
+      r = adex.perturbation.r
+      adex.adversarial_loss().item()
 
       # update best estimation
-      if adv_example.is_successful:
-        optimal_example = adv_example
+      if adex.is_successful:
+        optimal_example = adex
 
       # update loop variables
-      if increasing and not adv_example.is_successful:
+      if increasing and not adex.is_successful:
         range_min = range_max
         range_max = range_max*2
-      elif increasing and adv_example.is_successful:
+      elif increasing and adex.is_successful:
         increasing = False
       else:
-        range_max = range_max if not adv_example.is_successful else midvalue
-        range_min = midvalue  if not adv_example.is_successful else range_min
+        range_max = range_max if not adex.is_successful else midvalue
+        range_min = midvalue  if not adex.is_successful else range_min
 
     # if unable to find a good c,r pair, return the best found solution
     is_successful = optimal_example is not None
-    if not is_successful:
-      optimal_example = adv_example
+    if not is_successful: optimal_example = adex
     return optimal_example
 
 #==============================================================================
-
+# perturbation functions ------------------------------------------------------
 class Perturbation(object):
-  def __init__(self, adv_example:AdversarialExample):
+  def __init__(self, adv_example:CWAdversarialExample):
     super().__init__()
     self.r = None
     self.adv_example = adv_example
@@ -296,25 +264,8 @@ class SpectralPerturbation(object):
     super().__init__()
     self.r = None
     self.adv_example = adv_example
-
-    n = self.adv_example.vertex_count
-    stiff_indices, stiff_values = self.adv_example.stiff
-    area_indices, area_values = self.adv_example.area
-
-    # compute spectral information
-    ri,ci = stiff_indices.cpu().clone().detach().numpy()
-    sv = stiff_values.cpu().clone().detach().numpy()
-    S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
-
-    ri,ci = area_indices.cpu().clone().detach().numpy()
-    av = area_values.cpu().clone().detach().numpy()
-    A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
-    e, phi = scipy.sparse.linalg.eigsh(S, M=A, k=eigs_num, sigma=-1e-6)
-
-    # set eigenvalues and eigenfunctions
     self.eigs_num = eigs_num
-    self.eigvals = torch.tensor(e, device=self.adv_example.device, dtype=self.adv_example.dtype)
-    self.eigvecs = torch.tensor(phi, device=self.adv_example.device, dtype=self.adv_example.dtype)
+    self.eigvals,self.eigvecs = utils.eigenpairs(self.adv_example.pos, self.adv_example.faces, K=eigs_num)
     self.reset()
 
   def reset(self):
@@ -328,15 +279,37 @@ class SpectralPerturbation(object):
     pos, r = self.adv_example.pos, self.r
     return pos + self.eigvecs.matmul(r)
 
+class LatentPerturbation(object):
+  def __init__(self, adv_example):
+    super().__init__()
+    self.adv_example = adv_example
+    self.reset()
 
-# -----------------------------------------------------------------------------
-def LSM_regularizer(adv_example:AdversarialExample):
+  def reset(self):
+    raise NotImplementedError()
+
+  def perturb_positions(self):
+    raise NotImplementedError()
+
+# regularizers ----------------------------------------------------------------
+def LSM_regularizer(adv_example:CWAdversarialExample):
+    laplacian = tgeo.utils.get_laplacian(adv_example.edges.t(), normalization="rw")
     n = adv_example.vertex_count
     r = adv_example.perturbed_pos - adv_example.pos
-    tmp = tsparse.spmm(*adv_example.laplacian, n, n, r) #Least square Meshes problem 
+    tmp = tsparse.spmm(*laplacian, n, n, r) #Least square Meshes problem 
     return (tmp**2).sum()
 
-def LB_distortion(adv_example:AdversarialExample):
+def centroid_regularizer(adv_example:CWAdversarialExample):
+  adv_centroid = torch.mean(adv_example.perturbed_pos, dim=-1)
+  centroid = torch.mean(adv_example.pos, dim=-1)
+  return torch.nn.functional.mse_loss(adv_centroid, centroid)
+
+def area_regularizer(adv_example:CWAdversarialExample):
+  raise NotImplementedError() 
+
+
+# distortion functions --------------------------------------------------------
+def LB_distortion(adv_example:CWAdversarialExample):
     n = adv_example.vertex_count
     ppos = adv_example.perturbed_pos
     faces = adv_example.faces
@@ -350,13 +323,19 @@ def LB_distortion(adv_example:AdversarialExample):
     _,L_r = tsparse.spspmm(ai_r, torch.reciprocal(av_r), *stiff_r, n, n, n)
     return torch.nn.functional.smooth_l1_loss(L, L_r)
 
-def L2_distortion(adv_example:AdversarialExample):
+def L2_distortion(adv_example:CWAdversarialExample):
     diff = adv_example.perturbed_pos - adv_example.pos
     area_indices, area_values = adv_example.area
     L2_squared = torch.dot(area_values, (diff**2).sum(dim=-1))
     return L2_squared #torch.sqrt(L2_squared) (problem with non differentiability of sqrt at zero)
 
-def MC_distortion(adv_example:AdversarialExample):
+def spectral_L2_distortion(adv_example:CWAdversarialExample):
+  if not isinstance(adv_example.perturbation,SpectralPerturbation):
+    raise ValueError("Type of perturbation for input adversarial example is not spectral!")
+  spectral_coefficients = adv_example.perturbation.r
+  return spectral_coefficients.norm(p=2,dim=-1)
+
+def MC_distortion(adv_example:CWAdversarialExample):
     n = adv_example.vertex_count
     perturbed_pos = adv_example.perturbed_pos
     stiff_r, area_r = mesh.laplacian.LB_v2(perturbed_pos, adv_example.faces)
