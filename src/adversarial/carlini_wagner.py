@@ -76,6 +76,7 @@ class CWAdversarialExample(AdversarialExample):
     classifier:torch.nn.Module,
     target:int=None,
     adversarial_coeff:float=1,
+    regularization_coeff:float=1,
     logger:ValueLogger=ValueLogger(),
     minimization_iterations:int=100,
     learning_rate:float=5e-5,
@@ -87,6 +88,7 @@ class CWAdversarialExample(AdversarialExample):
       
     self.k = torch.tensor([k], device=self.device, dtype=self.dtype)
     self.adversarial_coeff = torch.tensor([adversarial_coeff], device=self.device, dtype=self.dtype)
+    self.regularization_coeff = torch.tensor([regularization_coeff], device=self.device, dtype=self.dtype)
     self.minimization_iterations = minimization_iterations
     self.learning_rate = learning_rate
     self.logger = logger
@@ -100,6 +102,7 @@ class CWAdversarialExample(AdversarialExample):
     # class components
     self.perturbation = None
     self.distortion_function = None
+    self.regularization_function = None
 
   @property
   def device(self):  return self.pos.device
@@ -125,7 +128,10 @@ class CWAdversarialExample(AdversarialExample):
 
   def total_loss(self):
     loss = self.adversarial_coeff*self.adversarial_loss() + self.distortion_function(self)
-    return loss
+    if self.regularization_function is not None:
+      return loss + self.regularization_coeff*self.regularization_function
+    else:
+      return loss
 
   def compute(self, usetqdm:str=None):
     # reset variables
@@ -178,6 +184,15 @@ class CWBuilder(Builder):
   def set_distortion_function(self, dfun):
     self.adex_functions["distortion"] = dfun
     return self
+
+  def set_regularization_function(self, regularizer):
+    self.adex_functions["regularizer"] = regularizer
+    return self
+  
+  def set_regularization_coeff(self, regularization_coeff):
+    self.adex_data["regularization_coeff"] = regularization_coeff
+    return self
+
   
   def set_logger(self, logger):
     self.adex_data["logger"] = logger
