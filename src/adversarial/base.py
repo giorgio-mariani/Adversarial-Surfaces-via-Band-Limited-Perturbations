@@ -49,12 +49,12 @@ class AdversarialExample(object):
 
   @property
   def is_successful(self):
-    adversarial_prediction = self.classifier(self.perturbed_pos).argmax().item()
-    prediction = self.classifier(self.pos).argmax().item()
+    adversarial_prediction = utils.prediction(self.classifier, self.perturbed_pos).item()
+    prediction = utils.prediction(self.classifier, self.pos).item()
     if self.is_targeted:
-        return  prediction != adversarial_prediction
+      return adversarial_prediction == self.target
     else:
-        return adversarial_prediction == self.target
+      return  prediction != adversarial_prediction
     
   @property
   def is_targeted(self):
@@ -81,6 +81,7 @@ class Builder(object):
 
   def set_parameters(self, **args):
       for k,v in args.items(): self.adex_data[k] = v
+      return self
 
   def build(self, usetqdm:str=None)->AdversarialExample:
     raise NotImplementedError()

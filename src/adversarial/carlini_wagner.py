@@ -29,7 +29,7 @@ class ValueLogger(object):
       self.add_value_name(n,f)
 
   def reset(self):
-    for func, values in self.value_functions.items():
+    for func, values in self.logged_values.items():
       values.clear()
 
   def add_value_name(self, name=None, obj=None):
@@ -348,7 +348,7 @@ def spectral_L2_distortion(adv_example:CWAdversarialExample):
   if not isinstance(adv_example.perturbation,SpectralPerturbation):
     raise ValueError("Type of perturbation for input adversarial example is not spectral!")
   spectral_coefficients = adv_example.perturbation.r
-  return spectral_coefficients.norm(p=2,dim=-1)
+  return spectral_coefficients.norm(p="fro")
 
 def MC_distortion(adv_example:CWAdversarialExample):
     n = adv_example.vertex_count
