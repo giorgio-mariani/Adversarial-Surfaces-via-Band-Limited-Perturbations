@@ -27,7 +27,7 @@ class FGSMAdversarialExample(AdversarialExample):
         super().__init__(
             pos=pos, edges=edges, faces=faces,
             classifier=classifier, target=target)
-        self.eigvals, self.eigvecs = utils.eigenpairs(pos, faces, K=eigs_num)
+        self.eigvals, self.eigvecs = utils.eigenpairs(pos, faces, K=eigs_num, double_precision=True)
         self.eigs_num = eigs_num
         self.eps = eps
 

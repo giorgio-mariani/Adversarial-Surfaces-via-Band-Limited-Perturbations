@@ -5,7 +5,6 @@ from typing import List
 import numpy as np
 import scipy.sparse as sp
 import torch
-import torch_geometric.data as ged
 
 def row(A):
     return A.reshape((1, -1))
@@ -178,6 +177,12 @@ def qslim_decimator_transformer(mesh_v, mesh_f, factor=None, n_verts_desired=Non
     return new_faces, mtx
 
 def generate_transform_matrices(mesh_v:np.ndarray, mesh_f:np.ndarray, factors:List[float]):
+    if len(mesh_v.shape) != 2 and mesh_v.shape[1] != 3 and isinstance(mesh_v.dtype, np.floating):
+        raise ValueError("input vertex positions must have shape [N,3] and floating point data type")
+    
+    if len(mesh_f.shape) != 2 and mesh_f.shape[1] != 3 and isinstance(mesh_v.dtype, np.integer):
+        raise ValueError("input vertex positions must have shape [M,3] and integer data type")
+
     factors = map(lambda x: 1.0 / x, factors)
     V, F, A, D = [], [], [], []
     A.append(get_adjacency_matrix(mesh_v, mesh_f).tocoo())
@@ -187,10 +192,6 @@ def generate_transform_matrices(mesh_v:np.ndarray, mesh_f:np.ndarray, factors:Li
     for i,factor in enumerate(factors):
         # compute the decimation quadrics
         new_mesh_f, ds_D = qslim_decimator_transformer(V[-1], F[-1], factor=factor)
-        
-        print(new_mesh_f.shape)
-        print(ds_D.shape)
-        
         D.append(ds_D.tocoo())
         new_mesh_v = ds_D.dot(V[-1])
         

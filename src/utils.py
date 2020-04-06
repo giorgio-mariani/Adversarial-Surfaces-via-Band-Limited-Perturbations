@@ -60,7 +60,7 @@ def kNN(
 
 
 #-------------------------------------------------------------------------------------------------
-def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int, use_double:bool=False):
+def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int, double_precision:bool=False):
     if pos.shape[-1] != 3:
         raise ValueError("Vertices positions must have shape [n,3]")
     if faces.shape[-1] != 3:
@@ -68,8 +68,9 @@ def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int, use_double:bool=Fals
     
     n = pos.shape[0]
     device = pos.device
-    dtype = torch.float64 if use_double else pos.dtype
-    stiff, area, lump = laplacebeltrami_FEM(pos.to(dtype), faces)
+    dtype = pos.dtype
+    dtypFEM = torch.float64 if double_precision else pos.dtype
+    stiff, area, lump = laplacebeltrami_FEM(pos.to(dtypFEM), faces)
 
     stiff = stiff.coalesce()
     area = area.coalesce()

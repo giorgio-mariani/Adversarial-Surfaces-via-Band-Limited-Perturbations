@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as func
 
 import adversarial.carlini_wagner as cw
-import adversarial.iterative_gradient as it
+import adversarial.pgd as pgd
 import dataset
 import models
 import train
@@ -12,11 +12,17 @@ import utils
 
 FAUST = "../../Downloads/Mesh-Datasets/MyFaustDataset"
 COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
-PARAMS_FILE = "../model_data/dataCOMA.pt"
-PARAMS_FILE = "../model_data/data.pt"
+SHREC14 =  "../../Downloads/Mesh-Datasets/MyShrec14"
 
-traindata = dataset.FaustDataset(FAUST, train=True, test=False)
-testdata = dataset.FaustDataset(FAUST, train=False, test=True)
+PARAMS_FILE = "../model_data/FAUST10.pt"
+PARAMS_FILE = "../model_data/SHREC-14.pt"
+
+
+#traindata = dataset.FaustDataset(FAUST, train=True, test=False)
+#testdata = dataset.FaustDataset(FAUST, train=False, test=True)
+
+traindata = dataset.Shrec14Dataset(SHREC14, train=True, test=False)
+testdata = dataset.Shrec14Dataset(SHREC14, train=False, test=True)
 
 model = models.ChebnetClassifier(
     param_conv_layers=[128,128,64,64],
