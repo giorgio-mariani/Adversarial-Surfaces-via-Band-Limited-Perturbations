@@ -61,32 +61,42 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             'Dataset not found. Please download it from {} and move it to {}'.format(self.url, self.raw_dir))
     
     def process(self):
+        face2edge = transforms.FaceToEdge(remove_faces=False)
+        datalist_file = os.path.join(self.processed_dir,"tmp.pt")
+
         # Read data into huge `Data` list.
-        data_list = []
-        f2e = transforms.FaceToEdge(remove_faces=False)
+        if os.path.exists(datalist_file):
+            datalist = torch.load(datalist_file)
+        else:
+            data_list = []
+
         for i, path in enumerate(tqdm.tqdm(self.raw_paths)):
+            if len(data_list) > i: 
+                continue
+
             mesh = torch_geometric.io.read_obj(path)
             mesh.y = i%10 # set the mesh class (note that SHREC14 models are ordered by class)
             mesh.subject = int(i/10)
-            f2e(mesh)
+            face2edge(mesh)
             
             # add decimation matrices
             pos, faces = mesh.pos.numpy(), mesh.face.t().numpy()
-            _,_,E,D = generate_transform_matrices(pos, faces, [4,4,4])
+            _,F,E,D = generate_transform_matrices(pos, faces, [4,4,4])
             mesh.downscale_matrices = [_scipy_to_torch_sparse(d) for d in D]
             mesh.downscaled_edges = [_scipy_to_torch_sparse(e) for e in E]
+            mesh.downscaled_faces = [_scipy_to_torch_sparse(f) for f in F]
             
             # add data to the save list
             data_list.append(mesh)
-
-        data, slices = self.collate(data_list)
+            
+            # save the data if last element in 50
+            if i%50 == 49:
+                torch.save(data_list, datalist_file)
         
-        # if processed directory doesn't exist then create it
-        if not os.path.exists(self.processed_dir):
-            os.mkdir(path)
-
-        # save the data
+        data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
+        os.remove(datalist_file)
+
 
 
 def _scipy_to_torch_sparse(scp_matrix):
