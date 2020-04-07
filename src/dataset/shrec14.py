@@ -84,8 +84,8 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             _,F,E,D = generate_transform_matrices(pos, faces, [4,4,4])
             mesh.downscale_matrices = [_scipy_to_torch_sparse(d) for d in D]
             mesh.downscaled_edges = [_scipy_to_torch_sparse(e) for e in E]
-            mesh.downscaled_faces = [_scipy_to_torch_sparse(f) for f in F]
-            
+            mesh.downscaled_faces = [torch.tensor(f).t() for f in F]
+
             # add data to the save list
             data_list.append(mesh)
             

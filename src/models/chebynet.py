@@ -90,7 +90,7 @@ def pool(x:torch.Tensor, downscale_mat:torch.sparse.FloatTensor):
 
 #PNI-------------------------------------------------------------------------------------
 
-class PNIChebConv(ChebConv):
+class PNIChebConv(torch_geometric.nn.ChebConv):
     def __init__(self, in_channels, out_channels, K, normalization='sym',bias=True, **kwargs):
         self.pni_coefficients = torch.nn.Parameter(torch.zeros(K,in_channels, out_channels))
         super().__init__(in_channels=in_channels, out_channels=out_channels,
