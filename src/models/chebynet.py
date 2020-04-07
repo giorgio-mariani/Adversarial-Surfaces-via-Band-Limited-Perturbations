@@ -2,6 +2,7 @@ import os
 from typing import List
 
 import torch.nn
+from torch.nn import Parameter
 import torch.nn.functional as func
 import torch.sparse
 import torch_geometric
@@ -149,4 +150,4 @@ class PNILinear(torch.nn.Linear):
             std = self.weight.std().item()
             white_noise = self.weight.clone().normal_(0,std)
 
-        return F.linear(input, self.weight+self.pni_coefficients*white_noise, self.bias)
+        return func.linear(input, self.weight+self.pni_coefficients*white_noise, self.bias)
