@@ -11,7 +11,6 @@ import torch_geometric as tgeo
 import scipy.sparse
 
 import utils
-import mesh.laplacian
 from .base import AdversarialExample, Builder
 
 
@@ -331,7 +330,7 @@ def LB_distortion(adv_example:CWAdversarialExample):
     area = adv_example.area
     stiff = adv_example.stiff
 
-    stiff_r, area_r = mesh.laplacian.LB_v2(ppos, faces)
+    stiff_r, area_r = utils.laplacebeltrami_FEM_v2(ppos, faces)
     ai, av = area
     ai_r, av_r = area_r
     _,L = tsparse.spspmm(ai, torch.reciprocal(av), *stiff, n, n, n)
@@ -353,7 +352,7 @@ def spectral_L2_distortion(adv_example:CWAdversarialExample):
 def MC_distortion(adv_example:CWAdversarialExample):
     n = adv_example.vertex_count
     perturbed_pos = adv_example.perturbed_pos
-    stiff_r, area_r = mesh.laplacian.LB_v2(perturbed_pos, adv_example.faces)
+    stiff_r, area_r = utils.laplacebeltrami_FEM_v2(perturbed_pos, adv_example.faces)
     
     tmp = tsparse.spmm(*adv_example.stiff, n, n, adv_example.pos)
     perturbed_tmp = tsparse.spmm(*stiff_r, n, n, perturbed_pos)
@@ -380,7 +379,7 @@ class LocallyEuclideanDistortion(object):
   def __call__(self, adv_example):
     if adv_example != self.adv_example:
       self.adv_example = adv_example
-      self.kNN = utils.kNN(
+      self.kNN = utils.misc.kNN(
         pos=adv_example.pos, 
         edges=adv_example.edges, 
         neighbors_num=self.neighborhood, 

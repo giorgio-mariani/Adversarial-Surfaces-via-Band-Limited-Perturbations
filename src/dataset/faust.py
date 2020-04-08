@@ -8,9 +8,8 @@ import torch_geometric.io as gio
 import torch_geometric.transforms as transforms
 import tqdm
 
-import mesh.decimation
 import dataset.downscale as dscale
-from dataset.transforms import Move, Rotate
+from utils.transforms import Move, Rotate
 
 class FaustDataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, 

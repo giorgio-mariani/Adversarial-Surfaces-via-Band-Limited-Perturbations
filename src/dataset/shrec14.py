@@ -9,9 +9,9 @@ import torch_geometric.io as gio
 import torch_geometric.transforms as transforms
 import tqdm
 
-from mesh.decimation import generate_transform_matrices
+from utils import generate_transform_matrices
 import dataset.downscale as dscale
-from dataset.transforms import Move, Rotate
+from utils.transforms import Move, Rotate
 
 class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, 
@@ -40,12 +40,25 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
 
         self.data, self.slices = torch.load(self.processed_paths[0])
 
-        testset_idx, trainset_idx = range(0,80), range(80, 400)
+        (self.downscale_matrices, 
+        self.downscaled_edges, 
+        self.downscaled_faces) = torch.load(self.processed_paths[1])
+
+
+        testset_slice, trainset_slice = (0,80), (80, 400)
         if train and not test:
-            self.data, self.slices = self.collate([self.get(i) for i in trainset_idx])
-    
+            self.data, self.slices = self.collate([self.get(i) for i in range(*trainset_slice)])
+            self.downscale_matrices = self.downscale_matrices[trainset_slice[0]:trainset_slice[1]]
+            self.downscaled_edges = self.downscaled_edges[trainset_slice[0]:trainset_slice[1]]
+            self.downscaled_faces = self.downscaled_faces[trainset_slice[0]:trainset_slice[1]]
+
         elif not train and test:
-            self.data, self.slices = self.collate([self.get(i) for i in testset_idx])
+            self.data, self.slices = self.collate([self.get(i) for i in range(*testset_slice)])
+
+            self.downscale_matrices = self.downscale_matrices[testset_slice[0]:testset_slice[1]]
+            self.downscaled_edges = self.downscaled_edges[testset_slice[0]:testset_slice[1]]
+            self.downscaled_faces = self.downscaled_faces[testset_slice[0]:testset_slice[1]]
+
 
     @property
     def raw_file_names(self):
@@ -54,7 +67,7 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ['data.pt']
+        return ['data.pt', 'downscale_data.pt']
 
     def download(self):
         raise RuntimeError(
@@ -66,7 +79,7 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
 
         # Read data into huge `Data` list.
         if os.path.exists(datalist_file):
-            datalist = torch.load(datalist_file)
+            data_list = torch.load(datalist_file)
         else:
             data_list = []
 
@@ -92,10 +105,24 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             # save the data if last element in 50
             if i%50 == 49:
                 torch.save(data_list, datalist_file)
-        
+
+        downscale_matrices = []
+        downscaled_edges = []
+        downscaled_faces = []
+        for mesh in data_list:
+            downscale_matrices.append(mesh.downscale_matrices)
+            downscaled_edges.append([i for (i,v, s) in mesh.downscaled_edges])
+            downscaled_faces.append(mesh.downscaled_faces)
+
+            delattr(mesh, "downscale_matrices")
+            delattr(mesh, "downscaled_edges")
+            delattr(mesh, "downscaled_faces")
+
+
         data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
-        os.remove(datalist_file)
+        torch.save((downscale_matrices,downscaled_edges,downscaled_faces), self.processed_paths[1])
+        #os.remove(datalist_file)
 
 
 

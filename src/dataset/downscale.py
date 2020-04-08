@@ -3,7 +3,7 @@ import os
 import torch
 import numpy as np
 
-import mesh
+import utils
 
 class DownscaleDelegate(object):
     def __init__(self, dataset, ds_model_index=0):
@@ -30,7 +30,7 @@ class DownscaleDelegate(object):
             else: # data is neither cached nor loaded
                 data = self.dataset[self._i]
                 v, f = data.pos.numpy(), data.face.t().numpy()
-                _,F,E,D = mesh.decimation.generate_transform_matrices(v, f, [4,4,4])
+                _,F,E,D = utils.generate_transform_matrices(v, f, [4,4,4])
                 np.save(self.downscaled_cache_file, (E,F,D) )
                 
             # assign data to respective fields

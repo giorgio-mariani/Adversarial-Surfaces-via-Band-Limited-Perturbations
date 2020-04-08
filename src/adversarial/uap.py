@@ -2,9 +2,8 @@
 import torch
 import tqdm
 
-import adversarial.iterative_gradient as ig
-from mesh.laplacian import LB_v2
 import utils
+from .pgd import PGDBuilder
 
 
 def _pred(Z):
@@ -56,13 +55,9 @@ def UAP_computation(
             if _pred(classifier(xi + v)) == yi:
                 #Compute the minimal perturbation that sends xi + v 
                 # to the decision boundary:
-                _,(_,areas) = LB_v2(xi+v, fi)
-                eigvals, eigvecs = utils.eigenpairs(xi+v, fi,K=K)
-                xi_adversarial =ig.fast_gradient(
-                    classifier=classifier,
-                    x=xi+v, y=yi,
-                    eigvecs=eigvecs,
-                    areavec=areas)
+                builder = PGDBuilder.set_classifier().set_mesh(xi+v, ei, fi)
+                adex = builder.build()
+                xi_adversarial = adex.perturbed_pos
                 r = (xi - xi_adversarial).detach()
                 
                 #Update the perturbation:

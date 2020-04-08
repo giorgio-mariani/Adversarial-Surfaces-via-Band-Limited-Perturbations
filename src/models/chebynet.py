@@ -4,10 +4,9 @@ from typing import List
 import torch.nn
 from torch.nn import Parameter
 import torch.nn.functional as func
-import torch.sparse
 import torch_geometric
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.data import Data
+import torch_sparse
+
 
 class ChebnetClassifier(torch.nn.Module):
     def __init__(
@@ -151,3 +150,75 @@ class PNILinear(torch.nn.Linear):
             white_noise = self.weight.clone().normal_(0,std)
 
         return func.linear(input, self.weight+self.pni_coefficients*white_noise, self.bias)
+
+
+#------------------------------------------------------------------------------------------------
+class ChebnetClassifier_SHREC14(torch.nn.Module):
+    def __init__(
+        self,
+        nums_conv_units:List[int],
+        num_classes:int,
+        num_dense_units:int,
+        parameters_file=None,
+        K=6, PNI=False):
+        """ Initialize class fields.
+
+        Args:
+            nums_conv_units (list of int): number of output features for the all the convolutional
+                layers (the output features for layer i are the input features of layer i+1), the 
+                input features of the first conv. layer are assumed to be 3 (coordinates xyz of node)
+            num_classes (int): number of output classes of the classifier.
+            num_dense_units (int): number of input units for last dense layer (output unites are the 
+                number of classe)
+        """
+
+        super().__init__()
+    
+        # add random noise to weights (if wanted)
+        if PNI :
+            chebconv = PNIChebConv
+            linear = PNILinear
+        else:
+            chebconv = torch_geometric.nn.ChebConv
+            linear = torch.nn.Linear
+
+        # convolutional layers
+        nums_conv_units.insert(0,3) # add the first input features
+        self.conv = []
+        for i in range(len(nums_conv_units)-1):
+            cheblayer = chebconv(
+                nums_conv_units[i],
+                nums_conv_units[i+1],
+                K = K)
+            self.conv.append(cheblayer)
+            self.add_module("chebconv_"+str(i), cheblayer)
+
+        # dense layer
+        self.linear = linear(num_dense_units, num_classes)
+
+        # load 
+        if parameters_file is not None:
+            if os.path.exists(parameters_file):
+                self.load_state_dict(torch.load(parameters_file))
+            else: 
+                print("Warning parameters file {} is non-existent".format(parameters_file))
+
+    def forward(self, mesh:torch_geometric.data.Data, downscale_matrices, downscaled_edges):
+        # apply chebyshev convolution and pooling layers
+        h = mesh.pos
+        edge_indices = downscaled_edges
+        
+        for i in range(len(downscale_matrices)):
+            # apply convolution
+            h = func.relu(self.conv[i](h, edge_indices[i]))
+            
+            #pooling
+            indices, values, size = downscale_matrices[i]
+            h = torch_sparse.spmm(indices, values, size[0], size[1], h)
+
+        # last convolution and dense layer
+        h = self.conv[i+1](h, edge_indices[i+1])
+        Z = self.linear(h.view(-1)) #flatten and apply dense layer
+        return Z #return the logits
+
+    

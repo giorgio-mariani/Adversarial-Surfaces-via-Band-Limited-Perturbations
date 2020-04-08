@@ -3,7 +3,6 @@ import tqdm
 
 
 import utils
-import mesh
 
 class AdversarialExample(object):
   def __init__(self,
@@ -32,8 +31,8 @@ class AdversarialExample(object):
     self.face_count = faces.shape[0]
 
     # compute useful data
-    self.stiff, self.area = mesh.laplacian.LB_v2(self.pos, self.faces)
-
+    self.stiff, self.area = utils.laplacebeltrami_FEM_v2(self.pos, self.faces)
+    
   @property
   def device(self):  return self.pos.device
   

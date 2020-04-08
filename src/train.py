@@ -117,3 +117,71 @@ def PGD_train(
     # save the model's parameters
     torch.save(classifier.state_dict(), parameters_file)
     return loss_values
+
+#------------------------------------------------------------
+def train_SHREC14(
+    train_data:Dataset,
+    classifier:torch.nn.Module,
+    parameters_file:str,
+    epoch_number:int = 1,
+    learning_rate:float=1e-3):
+        
+    # meters
+    loss_values = []
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(classifier.parameters(), lr=learning_rate, weight_decay=5e-4)
+
+    # train module
+    classifier.train()
+    for epoch in range(epoch_number):
+        # start epoch
+        print("epoch "+str(epoch+1)+" of "+str(epoch_number))
+        for i in tqdm.trange(len(train_data)):
+            optimizer.zero_grad()
+            out = classifier(
+                train_data[i], 
+                train_data.downscale_matrices[i],
+                train_data.downscaled_edges[i]
+                )
+            out = out.view(1,-1)
+
+            loss = criterion(out, train_data[i].y)
+            loss_values.append(loss.item())
+
+            loss.backward()
+            optimizer.step()
+
+    # save the model's parameters
+    torch.save(classifier.state_dict(), parameters_file)
+    return loss_values
+
+
+def evaluate_SHREC14(
+    eval_data:Dataset, 
+    classifier:torch.nn.Module,
+    epoch_number=1):
+
+    classifier.eval()
+    evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
+
+    confusion = None
+    for epoch in range(epoch_number):
+        for i in tqdm.trange(len(eval_data)):
+            y = evaldata_gtruth[i]
+
+            out = classifier(
+                eval_data[i],
+                eval_data.downscale_matrices[i],
+                eval_data.downscaled_edges[i])
+
+            if confusion is None:
+                num_classes = out.shape[-1]
+                confusion = torch.zeros([num_classes, num_classes])
+            
+            _, prediction = out.max(dim=-1)
+            target = int(y)
+            confusion[target, prediction] +=1
+            
+            correct = torch.diag(confusion).sum()
+            accuracy = correct/confusion.sum()
+    return accuracy, confusion

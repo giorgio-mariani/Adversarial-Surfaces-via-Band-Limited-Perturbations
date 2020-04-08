@@ -51,7 +51,7 @@ class FGSMAdversarialExample(AdversarialExample):
         if self.is_targeted:
             gradient = -self.get_gradient(self.target)
         else:
-            y = utils.prediction(self.classifier, self.pos).view(1)
+            y = utils.misc.prediction(self.classifier, self.pos).view(1)
             gradient = self.get_gradient(y)
         self._perturbed_pos = self.pos + self.eps*torch.sign(gradient)
 
@@ -105,14 +105,12 @@ class PGDAdversarialExample(FGSMAdversarialExample):
             if self.is_targeted:
                 gradient = -self.get_gradient(self.target)
             else:
-                y = utils.prediction(self.classifier, x_adv).view(1) #assuming classifier is correct
+                y = utils.misc.prediction(self.classifier, x_adv).view(1) #assuming classifier is correct
                 gradient = self.get_gradient(y)
             
             # compute step
             x_adv = x_adv + self.project(self.eps*torch.sign(gradient))
 
-            # check if adversarial example is successful
-            #if utils.prediction(x_adv) != utils.prediction(self.pos): break
         self._perturbed_pos = x_adv
 
     @property
