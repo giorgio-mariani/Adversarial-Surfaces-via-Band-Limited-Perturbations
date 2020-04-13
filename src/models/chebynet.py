@@ -158,7 +158,7 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
         self,
         nums_conv_units:List[int],
         num_classes:int,
-        num_dense_units:int,
+        num_hidden:int=1024,
         parameters_file=None,
         K=6, PNI=False):
         """ Initialize class fields.
@@ -194,7 +194,8 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
             self.add_module("chebconv_"+str(i), cheblayer)
 
         # dense layer
-        self.linear = linear(num_dense_units, num_classes)
+        self.linear_hidden = linear(nums_conv_units[-1], num_hidden)
+        self.linear_logits = linear(num_hidden, num_classes)
 
         # load 
         if parameters_file is not None:
@@ -218,7 +219,8 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
 
         # last convolution and dense layer
         h = self.conv[i+1](h, edge_indices[i+1])
-        Z = self.linear(h.view(-1)) #flatten and apply dense layer
+        h, _ = self.linear_hidden(h).max(dim=0) #flatten and apply dense layer
+        Z = self.linear_logits(h)
         return Z #return the logits
 
     
