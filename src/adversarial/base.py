@@ -2,7 +2,7 @@ import torch
 import tqdm
 
 
-import utils
+import utils.misc
 
 class AdversarialExample(object):
   def __init__(self,
@@ -12,7 +12,7 @@ class AdversarialExample(object):
       classifier:torch.nn.Module,
       target:int = None):
     super().__init__()
-    utils.check_data(pos, edges, faces, float_type=torch.float)
+    utils.misc.check_data(pos, edges, faces, float_type=torch.float)
     float_type = pos.dtype
 
     self.pos = pos
@@ -48,8 +48,8 @@ class AdversarialExample(object):
 
   @property
   def is_successful(self):
-    adversarial_prediction = utils.prediction(self.classifier, self.perturbed_pos).item()
-    prediction = utils.prediction(self.classifier, self.pos).item()
+    adversarial_prediction = utils.misc.prediction(self.classifier, self.perturbed_pos).item()
+    prediction = utils.misc.prediction(self.classifier, self.pos).item()
     if self.is_targeted:
       return adversarial_prediction == self.target
     else:

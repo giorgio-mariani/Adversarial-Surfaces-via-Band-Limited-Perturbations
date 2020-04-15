@@ -23,6 +23,9 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
         
         def to_device(mesh:torch_geometric.data.Data):
             mesh.pos = mesh.pos.to(device)
+            mesh.edge_index = mesh.edge_index.to(device)
+            mesh.face = mesh.face.to(device)
+            mesh.y = mesh.y.to(device)
             return mesh
 
         if transform_data:

@@ -137,11 +137,12 @@ def train_SHREC14(
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
         for i in tqdm.trange(len(train_data)):
+            device = train_data[i].pos.device
             optimizer.zero_grad()
             out = classifier(
                 train_data[i], 
-                train_data.downscale_matrices[i],
-                train_data.downscaled_edges[i]
+                [(i.to(device),v.to(device), s) for (i,v,s) in train_data.downscale_matrices[i]],
+                [ e .to(device) for e in train_data.downscaled_edges[i]]
                 )
             out = out.view(1,-1)
 
@@ -168,11 +169,11 @@ def evaluate_SHREC14(
     for epoch in range(epoch_number):
         for i in tqdm.trange(len(eval_data)):
             y = evaldata_gtruth[i]
-
+            device =eval_data[i].pos.device
             out = classifier(
                 eval_data[i],
-                eval_data.downscale_matrices[i],
-                eval_data.downscaled_edges[i])
+                [(i.to(device),v.to(device), s) for (i,v,s) in eval_data.downscale_matrices[i]],
+                [e .to(device) for e in eval_data.downscaled_edges[i]])
 
             if confusion is None:
                 num_classes = out.shape[-1]
