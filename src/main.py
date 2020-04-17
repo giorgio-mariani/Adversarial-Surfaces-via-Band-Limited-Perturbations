@@ -1,3 +1,7 @@
+import dataset
+import models
+import train
+
 FAUST = "../../Downloads/Mesh-Datasets/MyFaustDataset"
 COMA = "../../Downloads/Mesh-Datasets/MyComaDataset"
 SHREC14 =  "../../Downloads/Mesh-Datasets/MyShrec14"
@@ -6,6 +10,7 @@ PARAMS_FILE = "../model_data/FAUST10.pt"
 
 
 traindata = dataset.FaustDataset(FAUST, train=True, test=False)
+traindata = dataset.FaustAugmented(FAUST, train=True, test=False)
 testdata = dataset.FaustDataset(FAUST, train=False, test=True)
 
 model = models.ChebnetClassifier(

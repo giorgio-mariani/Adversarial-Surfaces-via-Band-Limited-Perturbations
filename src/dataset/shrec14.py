@@ -136,3 +136,46 @@ def _scipy_to_torch_sparse(scp_matrix):
     v = torch.FloatTensor(values)
     shape = scp_matrix.shape
     return (i,v, torch.Size(shape))
+
+
+class Shrec14Dataset_retrivial(Shrec14Dataset):
+    def __init__(self, 
+        root:str, 
+        device:torch.device=torch.device("cpu"),
+        train:bool=True, test:bool=True,
+        transform_data:bool=True):
+        self.url = 'http://www.cs.cf.ac.uk/shaperetrieval/shrec14/'
+        
+        def to_device(mesh:torch_geometric.data.Data):
+            mesh.pos = mesh.pos.to(device)
+            mesh.edge_index = mesh.edge_index.to(device)
+            mesh.face = mesh.face.to(device)
+            mesh.y = mesh.y.to(device)
+            mesh.subject = mesh.subject.to(device)
+            return mesh
+
+        if transform_data:
+            # rotate and move
+            transform = transforms.Compose([
+                Move(mean=[0,0,0], std=[0.05,0.05,0.05]), 
+                Rotate(dims=[0,1,2]), 
+                to_device])
+
+            # center each mesh into its centroid
+            pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
+            super().__init__(root=root,device=device, train=True, test=True, transform_data=transform_data)
+        else:
+            super().__init__(root=root,device=device, train=True, test=True, transform_data=transform_data)
+
+        self.data.y = self.data.subject
+        if train and not test:
+            self.data, self.slices = self.collate([self.get(i) for i in range(400) if i%10 > 2])
+            self.downscale_matrices = [self.downscale_matrices[i] for i in range(400) if i%10 > 2]
+            self.downscaled_edges = [self.downscaled_edges[i] for i in range(400) if i%10 > 2]
+            self.downscaled_faces = [self.downscaled_faces[i] for i in range(400) if i%10 > 2]
+
+        elif not train and test:
+            self.data, self.slices = self.collate([self.get(i) for i in range(400) if i%10 <= 2])
+            self.downscale_matrices = [self.downscale_matrices[i] for i in range(400) if i%10 <= 2]
+            self.downscaled_edges = [self.downscaled_edges[i] for i in range(400) if i%10 <= 2]
+            self.downscaled_faces = [self.downscaled_faces[i] for i in range(400) if i%10 <= 2]

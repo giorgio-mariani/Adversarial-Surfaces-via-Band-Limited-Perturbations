@@ -2,6 +2,7 @@
 import torch.nn
 from torch.nn import Parameter
 import torch.nn.functional as func
+import torch_geometric
 
 class PNIChebConv(torch_geometric.nn.ChebConv):
     def __init__(self, in_channels, out_channels, K, normalization='sym',bias=True, **kwargs):
