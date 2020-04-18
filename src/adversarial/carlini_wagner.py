@@ -340,8 +340,10 @@ def LB_distortion(adv_example:CWAdversarialExample):
 def L2_distortion(adv_example:CWAdversarialExample):
     diff = adv_example.perturbed_pos - adv_example.pos
     area_indices, area_values = adv_example.area
-    L2_squared = torch.dot(area_values, (diff**2).sum(dim=-1))
-    return L2_squared #torch.sqrt(L2_squared) (problem with non differentiability of sqrt at zero)
+    #L2_squared = torch.dot(area_values, (diff**2).sum(dim=-1))
+    weight_diff = diff*torch.sqrt(area_values.view(-1,1)) # (sqrt(ai)*(xi-perturbed(xi)) )^2  = ai*(x-perturbed(xi))^2
+    L2 = weight_diff.norm(p="fro")
+    return L2
 
 def spectral_L2_distortion(adv_example:CWAdversarialExample):
   if not isinstance(adv_example.perturbation,SpectralPerturbation):
