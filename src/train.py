@@ -183,6 +183,6 @@ def evaluate_SHREC14(
             target = int(y)
             confusion[target, prediction] +=1
             
-            correct = torch.diag(confusion).sum()
-            accuracy = correct/confusion.sum()
+    correct = torch.diag(confusion).sum()
+    accuracy = correct/confusion.sum()
     return accuracy, confusion

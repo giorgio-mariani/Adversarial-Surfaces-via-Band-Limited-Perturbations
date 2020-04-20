@@ -128,7 +128,7 @@ class CWAdversarialExample(AdversarialExample):
   def total_loss(self):
     loss = self.adversarial_coeff*self.adversarial_loss() + self.distortion_function(self)
     if self.regularization_function is not None:
-      return loss + self.regularization_coeff*self.regularization_function
+      return loss + self.regularization_coeff*self.regularization_function()
     else:
       return loss
 
@@ -228,6 +228,7 @@ class CWBuilder(Builder):
       
       adex.distortion_function = self.adex_functions["distortion"]
       adex.perturbation = self.adex_functions["perturbation"](adex)
+      adex.regularization_function = self.adex_functions.get("regularizer", None)
       adex.compute(usetqdm=usetqdm)
 
       # get perturbation
