@@ -128,7 +128,7 @@ class CWAdversarialExample(AdversarialExample):
   def total_loss(self):
     loss = self.adversarial_coeff*self.adversarial_loss() + self.distortion_function(self)
     if self.regularization_function is not None:
-      return loss + self.regularization_coeff*self.regularization_function()
+      return loss + self.regularization_coeff*self.regularization_function(self)
     else:
       return loss
 
@@ -139,7 +139,6 @@ class CWAdversarialExample(AdversarialExample):
 
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate)
-    self.classifier.eval()
 
     if usetqdm is None or usetqdm == False:
       iterations =  range(self.minimization_iterations)
@@ -174,10 +173,10 @@ class CWBuilder(Builder):
   def set_perturbation_type(self, type:str, eigs_num:int=100):
     if type == "vertex":
       self.adex_functions["perturbation"] = Perturbation
-    elif type == "spectral":
+    elif type == "lowband":
       self.adex_functions["perturbation"] = lambda x: SpectralPerturbation(x, eigs_num=eigs_num)
     else:
-      raise ValueError("accepetd values: 'vertex', 'spectral'")
+      raise ValueError("accepetd values: 'vertex', 'lowband'")
     return self
 
   def set_distortion_function(self, dfun):
