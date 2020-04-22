@@ -314,8 +314,8 @@ def LSM_regularizer(adv_example:CWAdversarialExample):
     return (tmp**2).sum()
 
 def centroid_regularizer(adv_example:CWAdversarialExample):
-  adv_centroid = torch.mean(adv_example.perturbed_pos, dim=-1)
-  centroid = torch.mean(adv_example.pos, dim=-1)
+  adv_centroid = torch.mean(adv_example.perturbed_pos, dim=0)
+  centroid = torch.mean(adv_example.pos, dim=0)
   return torch.nn.functional.mse_loss(adv_centroid, centroid)
 
 def area_regularizer(adv_example:CWAdversarialExample):
