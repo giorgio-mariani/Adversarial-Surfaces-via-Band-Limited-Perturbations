@@ -51,6 +51,7 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
 
     @property
     def raw_file_names(self):
+        '''
         categ_files = []
         for category in self.categories:
             category_dir = join(self.raw_dir, category)
@@ -59,8 +60,11 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         
         test_dir = join(self.raw_dir,"test")
         test_files =  [join(test_dir, f) for f in listdir(test_dir) if isfile(join(test_dir, f)) and f.split(".")[-1]=="ply"]
-        return categ_files + test_files
-
+        return categ_files + test_files'''
+        files = listdir(self.raw_dir)
+        categ_files = [f for f in files if isfile(join(self.raw_dir, f)) and f.split(".")[-1]=="ply"]
+        return categ_files
+        
     @property
     def processed_file_names(self):
         return ['data.pt', 'test.pt']
@@ -70,6 +74,29 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             'Dataset not found. Please download {} from {} and move it to {}'.format(self.raw_file_names, self.url, self.raw_dir))
     
     def process(self):
+        train_list = []
+        test_list = []
+        f2e = transforms.FaceToEdge(remove_faces=False)
+        for pindex, path in enumerate(tqdm.tqdm(self.raw_paths)):
+            mesh = torch_geometric.io.read_ply(path)
+            f2e(mesh)
+            tmp = split(path)[1].split(".")[0].split("_")
+            model_str, pose_str = tmp[-2], tmp[-1]
+            category = "_".join(tmp[:-2])
+            model = int(model_str[5:])
+            pose = int(pose_str[4:])
+            if pose >= 16:
+                test_list.append(mesh)
+            else:
+                train_list.append(mesh)
+        data, slices = self.collate(train_list)
+        torch.save( (data, slices), self.processed_paths[0])
+        
+        data, slices = self.collate(test_list)
+        torch.save( (data, slices), self.processed_paths[1])
+
+
+        '''
         # Read data into huge `Data` list.
         train_list = []
         test_list = []
@@ -90,7 +117,7 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         torch.save( (data, slices), self.processed_paths[0])
         
         data, slices = self.collate(test_list)
-        torch.save( (data, slices), self.processed_paths[1])
+        torch.save( (data, slices), self.processed_paths[1])'''
 
     @property
     def downscale_matrices(self): return self.ds_delegate.downscale_matrices

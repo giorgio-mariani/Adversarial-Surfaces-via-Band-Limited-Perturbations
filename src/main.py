@@ -55,5 +55,5 @@ adex_cw = builder.build(usetqdm="standard")
 adex_it = pgd.FGSMBuilder().set_classifier(model).set_mesh(x,e,f).build()
 '''
 
-SMAL =  "../../datasets/smal"
+SMAL =  "../datasets/smal"
 dataset.SmalDataset(SMAL, train=True, test=True)
