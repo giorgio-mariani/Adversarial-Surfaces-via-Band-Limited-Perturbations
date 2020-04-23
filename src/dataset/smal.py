@@ -40,13 +40,14 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         else:
             super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
 
-        self.data, self.slices = torch.load(self.processed_paths[0])
         self.ds_delegate = dscale.DownscaleDelegate(self)
-        '''
+        
         if train and not test:
-            self.data, self.slices = self.collate([self.get(i) for i in range(20, 100)])
+          self.data, self.slices = torch.load(self.processed_paths[0])
         elif not train and test:
-            self.data, self.slices = self.collate([self.get(i) for i in range(0, 20)])'''
+          self.data, self.slices = torch.load(self.processed_paths[1])
+        else:
+          raise ValueError("Invalid input train test combination!")
 
     @property
     def raw_file_names(self):
@@ -55,11 +56,14 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             category_dir = join(self.raw_dir, category)
             files = listdir(category_dir)
             categ_files += [join(category,f) for f in files if isfile(join(category_dir, f)) and f.split(".")[-1]=="ply" and f[0]!="."]
-        return categ_files
+        
+        test_dir = join(self.raw_dir,"test")
+        test_files =  [join(test_dir, f) for f in listdir(test_dir) if isfile(join(test_dir, f)) and f.split(".")[-1]=="ply"]
+        return categ_files + test_files
 
     @property
     def processed_file_names(self):
-        return ['data.pt']
+        return ['data.pt', 'test.pt']
 
     def download(self):
         raise RuntimeError(
@@ -67,16 +71,26 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
     
     def process(self):
         # Read data into huge `Data` list.
-        data_list = []
+        train_list = []
+        test_list = []
         f2e = transforms.FaceToEdge(remove_faces=False)
         for i, path in enumerate(tqdm.tqdm(self.raw_paths)):
             mesh = torch_geometric.io.read_ply(path)
-            category = split(split(path)[0])[1]
-            mesh.y = self.categories.index(category)
             f2e(mesh)
-            data_list.append(mesh)
-        data, slices = self.collate(data_list)
+            directory = split(split(path)[0])[1]
+            if directory == "test":
+              category = split(path)[1].split("-")[0]
+              mesh.y = self.categories.index(category)
+              test_list.append(mesh)
+            else:
+              category = directory
+              mesh.y = self.categories.index(category)
+              train_list.append(mesh)
+        data, slices = self.collate(train_list)
         torch.save( (data, slices), self.processed_paths[0])
+        
+        data, slices = self.collate(test_list)
+        torch.save( (data, slices), self.processed_paths[1])
 
     @property
     def downscale_matrices(self): return self.ds_delegate.downscale_matrices
