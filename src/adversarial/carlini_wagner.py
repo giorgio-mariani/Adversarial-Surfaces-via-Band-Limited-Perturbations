@@ -132,7 +132,7 @@ class CWAdversarialExample(AdversarialExample):
     else:
       return loss
 
-  def compute(self, usetqdm:str=None):
+  def compute(self, usetqdm:str=None, PATIENCE=3):
     # reset variables
     self.perturbation.reset()
     self.logger.reset() #ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
@@ -149,7 +149,20 @@ class CWAdversarialExample(AdversarialExample):
     else:
       raise ValueError("Invalid input for 'usetqdm', valid values are: None, 'standard' and 'notebook'.")
 
+    counter = PATIENCE
+    last_r = self.perturbation.r.data.clone();
+
     for i in iterations:
+      if self.is_successful:
+        counter -= 1
+        if counter<=0:
+            last_r.data = self.perturbation.r.data.clone()
+      else: 
+        counter = PATIENCE
+            
+      if counter<=0 and not self.is_successful:
+        self.perturbation.r.data = last_r
+        break;
       # compute loss
       optimizer.zero_grad()
       loss = self.total_loss()

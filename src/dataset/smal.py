@@ -41,13 +41,12 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
 
         self.ds_delegate = dscale.DownscaleDelegate(self)
-        
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
         if train and not test:
-          self.data, self.slices = torch.load(self.processed_paths[0])
+            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model < 6])
         elif not train and test:
-          self.data, self.slices = torch.load(self.processed_paths[1])
-        else:
-          raise ValueError("Invalid input train test combination!")
+            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model >= 6])
 
     @property
     def raw_file_names(self):
@@ -67,15 +66,14 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         
     @property
     def processed_file_names(self):
-        return ['data.pt', 'test.pt']
+        return ['data.pt']
 
     def download(self):
         raise RuntimeError(
             'Dataset not found. Please download {} from {} and move it to {}'.format(self.raw_file_names, self.url, self.raw_dir))
     
     def process(self):
-        train_list = []
-        test_list = []
+        data_list = []
         f2e = transforms.FaceToEdge(remove_faces=False)
         for pindex, path in enumerate(tqdm.tqdm(self.raw_paths)):
             mesh = torch_geometric.io.read_ply(path)
@@ -83,17 +81,11 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             tmp = split(path)[1].split(".")[0].split("_")
             model_str, pose_str = tmp[-2], tmp[-1]
             category = "_".join(tmp[:-2])
-            model = int(model_str[5:])
-            pose = int(pose_str[4:])
-            if pose >= 16:
-                test_list.append(mesh)
-            else:
-                train_list.append(mesh)
-        data, slices = self.collate(train_list)
+            mesh.model = int(model_str[5:])
+            mesh.pose = int(pose_str[4:])
+            data_list.append(mesh)
+        data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
-        
-        data, slices = self.collate(test_list)
-        torch.save( (data, slices), self.processed_paths[1])
 
 
         '''
