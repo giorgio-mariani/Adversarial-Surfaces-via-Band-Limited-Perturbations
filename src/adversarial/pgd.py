@@ -1,9 +1,47 @@
 import torch
 import scipy
 
-from .base import AdversarialExample, Builder
-import utils
+import scipy.sparse.linalg  as slinalg
+from utils.laplacian import laplacebeltrami_FEM
 
+from .base import AdversarialExample, Builder
+
+def prediction(classifier:torch.nn.Module, x:torch.Tensor):
+  Z = classifier(x)
+  prediction = Z.argmax()
+  return prediction
+
+def eigenpairs(pos:torch.Tensor, faces:torch.Tensor, K:int, double_precision:bool=False):
+    r"""Compute first K eigenvalues and eigenvectors for the input mesh.
+    
+    """
+    if pos.shape[-1] != 3:
+        raise ValueError("Vertices positions must have shape [n,3]")
+    if faces.shape[-1] != 3:
+        raise ValueError("Face indices must have shape [m,3]")
+    
+    n = pos.shape[0]
+    device = pos.device
+    dtype = pos.dtype
+    dtypFEM = torch.float64 if double_precision else pos.dtype
+    stiff, area, lump = laplacebeltrami_FEM(pos.to(dtypFEM), faces)
+
+    stiff = stiff.coalesce()
+    area = area.coalesce()
+
+    si, sv = stiff.indices().cpu(), stiff.values().cpu()
+    ai, av = area.indices().cpu(), area.values().cpu()
+
+    ri,ci = si
+    S = scipy.sparse.csr_matrix( (sv, (ri,ci)), shape=(n,n))
+
+    ri,ci = ai
+    A = scipy.sparse.csr_matrix( (av, (ri,ci)), shape=(n,n))
+
+    eigvals, eigvecs = slinalg.eigsh(S, M=A, k=K, sigma=-1e-6)
+    eigvals = torch.tensor(eigvals, device=device, dtype=dtype)
+    eigvecs = torch.tensor(eigvecs, device=device, dtype=dtype)
+    return eigvals, eigvecs
 
         
 class FGSMBuilder(Builder):
@@ -29,7 +67,7 @@ class FGSMAdversarialExample(AdversarialExample):
         super().__init__(
             pos=pos, edges=edges, faces=faces,
             classifier=classifier, target=target)
-        self.eigvals, self.eigvecs = utils.eigenpairs(pos, faces, K=eigs_num, double_precision=True)
+        self.eigvals, self.eigvecs = eigenpairs(pos, faces, K=eigs_num, double_precision=True)
         self.eigs_num = eigs_num
         self.alpha = alpha
         self.delta = torch.zeros(pos.shape, device=pos.device, dtype=pos.dtype, requires_grad=True)
@@ -68,7 +106,7 @@ class FGSMAdversarialExample(AdversarialExample):
         if self.is_targeted:
             gradient = -self.get_gradient(self.target)
         else:
-            y = utils.misc.prediction(self.classifier, self.pos).view(1)
+            y = prediction(self.classifier, self.pos).view(1)
             gradient = self.get_gradient(y)
         self.delta = self.alpha*torch.sign(gradient)
 
@@ -133,7 +171,7 @@ class PGDAdversarialExample(FGSMAdversarialExample):
             if self.is_targeted:
                 gradient = -self.get_gradient(self.target)
             else:
-                y = utils.misc.prediction(self.classifier, self.perturbed_pos.detach()).view(1) #assuming classifier is correct
+                y = prediction(self.classifier, self.perturbed_pos.detach()).view(1) #assuming classifier is correct
                 gradient = self.get_gradient(y)
             
             # compute step
