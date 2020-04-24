@@ -81,7 +81,8 @@ def PGD_train(
     epoch_number:int = 1,
     learning_rate:float=1e-3,
     steps=10,
-    eps=0.001):
+    eps=0.001,
+    alpha=0.045):
         
     # meters
     loss_values = []
@@ -101,7 +102,7 @@ def PGD_train(
                 train_data[i].pos,
                 train_data[i].edge_index.t().to(device), 
                 train_data[i].face.t().to(device))
-            builder.set_iterations(steps).set_epsilon(eps).set_eigs_number(36)
+            builder.set_iterations(steps).set_epsilon(eps).set_alpha(alpha).set_eigs_number(36)
             x = builder.build().perturbed_pos
             y = train_data[i].y
 
