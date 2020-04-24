@@ -110,3 +110,22 @@ def MC_distortion(pos, perturbed_pos, stiff, area, perturbed_stiff, perturbed_ar
 
 def L2_distortion(pos, perturbed_pos, area, perturbed_area):
   return torch.norm(perturbed_pos - pos, p=2, dim=-1).sum()
+
+
+
+def pprint_tree(tensor:torch.Tensor, file=None, _prefix="", _last=True):
+    print(_prefix, "`- " if _last else "|- ", str(tensor) , sep="", file=file)
+    _prefix += "   " if _last else "|  "
+    
+    if hasattr(tensor, "grad_fn"):
+        child_count = len(tensor.grad_fn.next_functions)
+        for i, (child, _) in enumerate(tensor.grad_fn.next_functions):
+            _last = i == (child_count - 1)
+            if child is not None:
+                pprint_tree(child, file, _prefix, _last)
+    elif hasattr(tensor, "next_functions"):
+        child_count = len(tensor.next_functions)
+        for i, (child, _) in enumerate(tensor.next_functions):
+            _last = i == (child_count - 1)
+            if child is not None:
+                pprint_tree(child, file, _prefix, _last)

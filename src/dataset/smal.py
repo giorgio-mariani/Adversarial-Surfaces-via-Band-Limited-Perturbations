@@ -44,9 +44,9 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         self.data, self.slices = torch.load(self.processed_paths[0])
 
         if train and not test:
-            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model < 6])
+            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model < 5])
         elif not train and test:
-            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model >= 6])
+            self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).model >= 5])
 
     @property
     def raw_file_names(self):
@@ -83,6 +83,7 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             category = "_".join(tmp[:-2])
             mesh.model = int(model_str[5:])
             mesh.pose = int(pose_str[4:])
+            mesh.y = self.categories.index(category)
             data_list.append(mesh)
         data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])

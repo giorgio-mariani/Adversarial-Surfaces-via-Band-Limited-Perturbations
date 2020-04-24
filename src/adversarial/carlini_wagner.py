@@ -138,7 +138,7 @@ class CWAdversarialExample(AdversarialExample):
     self.logger.reset() #ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
 
     # compute gradient w.r.t. the perturbation
-    optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate)
+    optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate,betas=(0.5,0.75))
 
     if usetqdm is None or usetqdm == False:
       iterations =  range(self.minimization_iterations)
@@ -148,7 +148,8 @@ class CWAdversarialExample(AdversarialExample):
       iterations = tqdm.tqdm_notebook(range(self.minimization_iterations))
     else:
       raise ValueError("Invalid input for 'usetqdm', valid values are: None, 'standard' and 'notebook'.")
-
+    
+    flag=False
     counter = PATIENCE
     last_r = self.perturbation.r.data.clone();
 
@@ -157,10 +158,11 @@ class CWAdversarialExample(AdversarialExample):
         counter -= 1
         if counter<=0:
             last_r.data = self.perturbation.r.data.clone()
+            flag= True
       else: 
         counter = PATIENCE
             
-      if counter<=0 and not self.is_successful:
+      if flag and not self.is_successful:
         self.perturbation.r.data = last_r
         break;
       # compute loss

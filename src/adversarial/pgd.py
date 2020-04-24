@@ -4,6 +4,8 @@ import scipy
 from .base import AdversarialExample, Builder
 import utils
 
+
+        
 class FGSMBuilder(Builder):
     def __init__(self):
         super().__init__()
@@ -30,16 +32,31 @@ class FGSMAdversarialExample(AdversarialExample):
         self.eigvals, self.eigvecs = utils.eigenpairs(pos, faces, K=eigs_num, double_precision=True)
         self.eigs_num = eigs_num
         self.alpha = alpha
+        self.delta = torch.zeros(pos.shape, device=pos.device, dtype=pos.dtype, requires_grad=True)
 
-    def get_gradient(self, y):
-        x = self.pos.clone().detach().requires_grad_(True)
+    def get_gradient_v2(self, y):
+        #x = self.perturbed_pos.clone().detach().requires_grad_(True)
+        self.delta.detach_().requires_grad_(True)
+        if self.delta.grad is not None:
+            self.delta.grad.detach_()
+            self.delta.grad.zero_()
+
+        z = self.classifier(self.perturbed_pos).view(1,-1)
+        
         criterion = torch.nn.CrossEntropyLoss()
-
+        loss = criterion(z, y)
+        loss.backward()
+        return  self.delta.grad
+    
+    def get_gradient(self, y):
+        x = self.perturbed_pos.clone().detach().requires_grad_(True)
         if x.grad is not None:
             x.grad.detach_()
             x.grad.zero_()
 
         z = self.classifier(x).view(1,-1)
+        
+        criterion = torch.nn.CrossEntropyLoss()
         loss = criterion(z, y)
         loss.backward()
         return  x.grad
@@ -53,11 +70,11 @@ class FGSMAdversarialExample(AdversarialExample):
         else:
             y = utils.misc.prediction(self.classifier, self.pos).view(1)
             gradient = self.get_gradient(y)
-        self._perturbed_pos = self.pos + self.alpha*torch.sign(gradient)
+        self.delta = self.alpha*torch.sign(gradient)
 
     @property
     def perturbed_pos(self):
-        return self._perturbed_pos
+        return self.pos + self.delta
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -105,33 +122,118 @@ class PGDAdversarialExample(FGSMAdversarialExample):
         self.project = projection
         self.eps = torch.tensor(eps, device=pos.device, dtype=pos.dtype)
 
+    def update(self, gradient):
+        v = self.delta + self.alpha*torch.sign(gradient)
+        proj =  self.project(self, v)
+        return proj
+
     def compute(self):
-        x_adv = self.pos
-        adv_r = (self.pos - self.pos) #simple way to get zero
         for i in range(self.iterations):
             # get gradient
             if self.is_targeted:
                 gradient = -self.get_gradient(self.target)
             else:
-                y = utils.misc.prediction(self.classifier, self.pos + adv_r).view(1) #assuming classifier is correct
+                y = utils.misc.prediction(self.classifier, self.perturbed_pos.detach()).view(1) #assuming classifier is correct
                 gradient = self.get_gradient(y)
             
             # compute step
-            adv_r = self.project(self, adv_r + self.alpha*torch.sign(gradient))
-
-        self._perturbed_pos = self.pos + adv_r
+            self.delta = self.update(gradient)
 
     @property
     def perturbed_pos(self):
-        return self._perturbed_pos
+        return self.pos + self.delta
 
 
 def clip(adex, x):
     eps = adex.eps
     return torch.max(torch.min(x, eps), -eps)
 
+def clip_norms(adex, x):
+    eps = adex.eps
+    norms = x.norm(dim=1,p=2)
+    mask = norms > eps
+    x[mask] = x[mask]*eps/norms[mask].view(-1,1)
+    return x
+    
 def lowband_filter(adex, x):
     x_spectral = adex.eigvecs.t().mm(torch.diag(adex.area[1]).mm(x))
     x_filtered = adex.eigvecs.mm(x_spectral)
     x_filtered = clip(adex, x_filtered)
     return x_filtered
+
+
+
+class L2AdversarialExample(PGDAdversarialExample):
+    def __init__(self, 
+        pos, edges, faces, 
+        classifier, 
+        target:int=None,
+        eigs_num:int=100, 
+        iterations:int=10,
+        projection=None,
+        alpha:float=1,
+        eps:float=1):
+        super().__init__(
+            pos=pos, edges=edges, faces=faces,
+            classifier=classifier, 
+            target=target,
+            eigs_num=eigs_num, 
+            alpha=alpha,
+            projection=projection,
+            eps=eps,
+            iterations=iterations)
+
+    def update(self, gradient):
+        v =  self.delta + self.alpha*gradient/gradient.norm(p=2)
+        proj = self.project(self, v)
+        return proj
+
+class L2PGDBuilder(PGDBuilder):
+    def __init__(self):
+        super().__init__()
+
+    def build(self, usetqdm=None) -> AdversarialExample:
+        adex = L2AdversarialExample(**self.adex_data)
+        adex.compute()
+        return adex
+
+
+
+class LowbandAdversarialExample(L2AdversarialExample):
+    def __init__(self, 
+        pos, edges, faces, 
+        classifier, 
+        target:int=None,
+        eigs_num:int=100, 
+        iterations:int=10,
+        projection=None,
+        alpha:float=1,
+        eps:float=1):
+        super().__init__(
+            pos=pos, edges=edges, faces=faces,
+            classifier=classifier, 
+            target=target,
+            eigs_num=eigs_num, 
+            alpha=alpha,
+            projection=projection,
+            eps=eps,
+            iterations=iterations)
+        self.delta = torch.zeros([eigs_num, pos.shape[1]], device=pos.device,dtype=pos.dtype)
+    
+    @property
+    def perturbed_pos(self):
+        return self.pos + self.eigvecs.matmul(self.delta)
+    
+    def get_gradient(self, y):
+        return self.get_gradient_v2(y)
+
+
+class LowbandPGDBuilder(PGDBuilder):
+    def __init__(self):
+        super().__init__()
+
+
+    def build(self, usetqdm=None) -> AdversarialExample:
+        adex = LowbandAdversarialExample(**self.adex_data)
+        adex.compute()
+        return adex
