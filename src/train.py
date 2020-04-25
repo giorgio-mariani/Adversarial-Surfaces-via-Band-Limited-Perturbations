@@ -49,14 +49,11 @@ def evaluate(
     epoch_number=1):
 
     classifier.eval()
-    evaldata_pos = [mesh.pos for mesh in eval_data]
-    evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
-
     confusion = None
     for epoch in range(epoch_number):
         for i in tqdm.trange(len(eval_data)):
-            x = evaldata_pos[i]
-            y = evaldata_gtruth[i]
+            x = eval_data[i].pos
+            y = eval_data[i].y
 
             out:torch.Tensor = classifier(x)
             if confusion is None:
@@ -82,7 +79,7 @@ def PGD_train(
     learning_rate:float=1e-3,
     steps=10,
     eps=0.001,
-    alpha=0.045):
+    alpha=0.032):
         
     # meters
     loss_values = []
@@ -91,6 +88,7 @@ def PGD_train(
 
     # train module
     classifier.train()
+    projection = lambda a,x: pgd.clip(a, pgd.lowband_filter(a,x))
     for epoch in range(epoch_number):
         # start epoch
         print("epoch "+str(epoch+1)+" of "+str(epoch_number))
@@ -103,6 +101,7 @@ def PGD_train(
                 train_data[i].edge_index.t().to(device), 
                 train_data[i].face.t().to(device))
             builder.set_iterations(steps).set_epsilon(eps).set_alpha(alpha).set_eigs_number(36)
+            builder.set_projection(projection)
             x = builder.build().perturbed_pos
             y = train_data[i].y
 
