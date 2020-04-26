@@ -158,5 +158,5 @@ def compute_meancurv_diff_abs(perturbed_pos, pos, faces):
   mcp, _, _  = meancurvature(ppos, faces)
   mc, _, (_, a) = meancurvature(pos, faces)
   diff_curvature = mc-mcp
-  curvature_dist = (a*diff_curvature**2).sum().sqrt().item()
+  curvature_dist = (a*diff_curvature.abs()).sum().item()
   return curvature_dist
