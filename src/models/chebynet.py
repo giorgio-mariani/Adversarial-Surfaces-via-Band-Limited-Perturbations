@@ -139,9 +139,10 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
             else: 
                 print("Warning parameters file {} is non-existent".format(parameters_file))
 
-    def forward(self, mesh:torch_geometric.data.Data, downscale_matrices, downscaled_edges):
+    #TODO convert input so to take only the positions
+    def forward(self, pos:torch.Tensor, downscale_matrices, downscaled_edges):
         # apply chebyshev convolution and pooling layers
-        h = mesh.pos
+        h = pos 
         edge_indices = downscaled_edges
         
         for i in range(len(downscale_matrices)):

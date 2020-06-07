@@ -78,9 +78,13 @@ class Builder(object):
     self.adex_data["classifier"] = classifier
     return self
 
-  def set_parameters(self, **args):
-      for k,v in args.items(): self.adex_data[k] = v
-      return self
+  def build(self, **args)->AdversarialExample: #the dictionary args contains additional parameters
+    raise NotImplementedError()                #whose meaning will depend on the sub-class
 
-  def build(self, usetqdm:str=None)->AdversarialExample:
-    raise NotImplementedError()
+
+class LossFunction(object):
+    def __init__(self, adv_example:AdversarialExample):
+        self.adv_example = adv_example
+
+    def __call__(self) -> torch.Tensor:
+        raise NotImplementedError

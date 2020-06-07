@@ -70,4 +70,3 @@ class Move(object):
 
         mesh.pos = offset + (pos - centroid)
         return mesh
-

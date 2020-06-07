@@ -1,17 +1,29 @@
-import torch
-import tqdm
 import networkx as nx
 import numpy as np
+import torch
+import torch_sparse as tsparse
+import torch_scatter as tscatter
+import torch_geometric
+import tqdm
 
 from . import eigenpairs
 
-def check_data(pos:torch.Tensor, edges:torch.Tensor, faces:torch.Tensor, float_type:type=torch.double):
+def check_data(pos:torch.Tensor=None, edges:torch.Tensor=None, faces:torch.Tensor=None, float_type:type=None):
     # check input consistency 
-    if len(pos.shape)!= 2 or pos.shape[1] != 3 or pos.dtype != float_type:
-      raise ValueError("The vertices matrix must have shape [n,3] and type float!")
-    if len(edges.shape) != 2 or edges.shape[1] != 2 or edges.dtype != torch.long:
+
+    if pos is not None:
+      if not torch.is_floating_point(pos): 
+        raise ValueError("The vertices matrix must have floating point type!")
+    
+      if float_type is None: float_type = pos.dtype
+
+      if (len(pos.shape)!= 2 or pos.shape[1] != 3) and pos.dtype != float_type:
+        raise ValueError("The vertices matrix must have shape [n,3] and type {}!".format(float_type))
+
+    if edges is not None and (len(edges.shape) != 2 or edges.shape[1] != 2 or edges.dtype != torch.long):
       raise ValueError("The edge index matrix must have shape [m,2] and type long!")
-    if len(faces.shape) != 2 or faces.shape[1] != 3 or faces.dtype != torch.long:
+    
+    if faces is not None and (len(faces.shape) != 2 or faces.shape[1] != 3 or faces.dtype != torch.long):
       raise ValueError("The edge index matrix must have shape [#faces,3] and type long!")
 
 def prediction(classifier:torch.nn.Module, x:torch.Tensor):
@@ -56,8 +68,6 @@ def kNN(
 
 
 #-------------------------------------------------------------------------------------------------
-
-
 def heat_kernel(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float) -> torch.Tensor:
     #hk = eigvecs.matmul(torch.diag(torch.exp(-t*eigvals)).matmul(eigvecs.t()))
     tmp = torch.exp(-t*eigvals).view(1,-1)
@@ -73,59 +83,38 @@ def diffusion_distance(eigvals:torch.Tensor, eigvecs:torch.Tensor, t:float):
     tmp = torch.diag(hk).repeat(n, 1)
     return tmp + tmp.t() -2*hk
 
-
-def compute_distance_mse(pos, perturbed_pos, faces, K, t):
+def compute_dd_mse(pos, perturbed_pos, faces, K, t):
     eigvals1, eigvecs1 = eigenpairs(pos, faces, K)
     eigvals2, eigvecs2 = eigenpairs(perturbed_pos, faces, K)
     d1 = diffusion_distance(eigvals1,eigvecs1,t)
     d2 = diffusion_distance(eigvals2,eigvecs2,t)
     return torch.nn.functional.mse_loss(d1, d2)
 
+#----------------------------------------------------------------------------------
+def tri_areas(pos, faces):
+    check_data(pos=pos, faces=faces)
+    v1 = pos[faces[:, 0], :]
+    v2 = pos[faces[:, 1], :]
+    v3 = pos[faces[:, 2], :]
+    v1 = v1 - v3
+    v2 = v2 - v3
+    return torch.norm(torch.cross(v1, v2, dim=1), dim=1) * .5
 
-#-------------------------------
-import torch_sparse as tsparse
-
-def LB_distortion(pos, perturbed_pos, faces, stiff, area, perturbed_stiff, perturbed_area):
+def pos_areas(pos, faces): #TODO check correctness
+  check_data(pos=pos, faces=faces)
   n = pos.shape[0]
-  ai, av = area
-  ai_r, av_r = perturbed_area
-  _,L = tsparse.spspmm(ai, torch.reciprocal(av), *stiff, n, n, n)
-  _,perturbed_L = tsparse.spspmm(ai_r, torch.reciprocal(av_r), *perturbed_stiff, n, n, n)
-  return torch.nn.functional.smooth_l1_loss(L, perturbed_L)
+  m = faces.shape[0]
+  triareas = tri_areas(pos, faces)/3
+  posareas = torch.tensor(size=[n, 1], device=triareas.device, dtype=triareas.dtype)
+  for i in range(3):
+    posareas += tscatter.scatter_add(triareas, faces[:,i])
+  return posareas
+
+def least_square_meshes(pos, edges):
+    check_data(pos=pos, edges=edges)
+    laplacian = torch_geometric.utils.get_laplacian(edges.t(), normalization="rw")
+    n = pos.shape[2]
+    tmp = tsparse.spmm(*laplacian, n, n, pos) #Least square Meshes problem 
+    return (tmp**2).sum()
 
 
-def MC_distortion(pos, perturbed_pos, stiff, area, perturbed_stiff, perturbed_area):
-  n = pos.shape[0]
-  tmp = tsparse.spmm(*stiff, n, n, pos)
-  perturbed_tmp = tsparse.spmm(*perturbed_stiff, n, n, perturbed_pos)
-  
-  ai, av = area
-  ai_r, av_r = perturbed_area
-
-  mcf = tsparse.spmm(ai, torch.reciprocal(av), n, n, tmp)
-  perturbed_mcf = tsparse.spmm(ai_r, torch.reciprocal(av_r), n, n, perturbed_tmp)
-  diff_norm = torch.norm(mcf - perturbed_mcf,p=2,dim=-1)
-  norm_integral = torch.dot(av, diff_norm)
-  return norm_integral
-
-def L2_distortion(pos, perturbed_pos, area, perturbed_area):
-  return torch.norm(perturbed_pos - pos, p=2, dim=-1).sum()
-
-
-
-def pprint_tree(tensor:torch.Tensor, file=None, _prefix="", _last=True):
-    print(_prefix, "`- " if _last else "|- ", str(tensor) , sep="", file=file)
-    _prefix += "   " if _last else "|  "
-    
-    if hasattr(tensor, "grad_fn"):
-        child_count = len(tensor.grad_fn.next_functions)
-        for i, (child, _) in enumerate(tensor.grad_fn.next_functions):
-            _last = i == (child_count - 1)
-            if child is not None:
-                pprint_tree(child, file, _prefix, _last)
-    elif hasattr(tensor, "next_functions"):
-        child_count = len(tensor.next_functions)
-        for i, (child, _) in enumerate(tensor.next_functions):
-            _last = i == (child_count - 1)
-            if child is not None:
-                pprint_tree(child, file, _prefix, _last)
