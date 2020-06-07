@@ -1,8 +1,10 @@
+from typing import Tuple
+
 import torch
 import tqdm
 
-
-import utils.misc
+from utils import laplacebeltrami_FEM_v2
+from utils.misc import check_data
 
 class AdversarialExample(object):
   def __init__(self,
@@ -10,54 +12,75 @@ class AdversarialExample(object):
       edges:torch.LongTensor,
       faces:torch.LongTensor,
       classifier:torch.nn.Module,
-      target:int = None):
+      classifier_args:dict,
+      target:int=None):
     super().__init__()
-    utils.misc.check_data(pos, edges, faces, float_type=torch.float)
+    check_data(pos, edges, faces, float_type=torch.float)
     float_type = pos.dtype
 
-    self.pos = pos
-    self.faces = faces
-    self.edges = edges
-    self.classifier = classifier
-    
-    if target is not None:
-        self.target = torch.tensor([target], device=pos.device, dtype=torch.long)
-    else:
-        self.target = None
-
-    #constants
-    self.vertex_count = pos.shape[0]
-    self.edge_count = edges.shape[0]
-    self.face_count = faces.shape[0]
+    self._pos = pos
+    self._faces = faces
+    self._edges = edges
+    self._classifier = classifier
+    self._target = None if target is None else torch.tensor([target], device=pos.device, dtype=torch.long)
+    self._classifier_args = classifier_args
 
     # compute useful data
-    self.stiff, self.area = utils.laplacebeltrami_FEM_v2(self.pos, self.faces)
-    
-  @property
-  def device(self):  return self.pos.device
-  
-  @property
-  def dtype_int(self): return self.edges.dtype
+    self._stiff, self._area = laplacebeltrami_FEM_v2(self._pos, self._faces)
 
   @property
-  def dtype_float(self): return self.pos.dtype
+  def pos(self)->torch.Tensor: return self._pos
+  @property
+  def edges(self)->torch.LongTensor:return self._edges
+  @property
+  def faces(self)->torch.LongTensor:return self._faces
+  @property
+  def target(self)->torch.Tensor:return self._target
+  @property
+  def stiff(self)->Tuple: return self._stiff
+  @property
+  def area(self)->Tuple: return self._area
+  @property
+  def classifier(self)->torch.nn.Module: return self._classifier
+  @property
+  def vertex_count(self)->int: return self._pos.shape[0]
+  @property
+  def edge_count(self)->int: return self._edges.shape[0]
+  @property
+  def face_count(self)->int: return self._faces.shape[0]
 
   @property
-  def perturbed_pos(self):
+  def device(self) ->torch.device:  return self.pos.device
+  @property
+  def dtype_int(self)->torch.dtype: return self.edges.dtype
+  @property
+  def dtype_float(self)->torch.dtype: return self.pos.dtype
+
+  @property
+  def perturbed_pos(self) -> torch.Tensor:
     raise NotImplementedError()
 
   @property
-  def is_successful(self):
-    adversarial_prediction = utils.misc.prediction(self.classifier, self.perturbed_pos).item()
-    prediction = utils.misc.prediction(self.classifier, self.pos).item()
+  def logits(self) -> torch.Tensor:
+    return self.classifier(self.pos, **self._classifier_args)
+
+  @property
+  def perturbed_logits(self)->torch.Tensor:
+    return self.classifier(self.perturbed_pos, **self._classifier_args)
+
+  @property
+  def is_targeted(self)->bool: return self._target is not None
+
+  # cached operations
+  @property
+  def is_successful(self) -> bool:
+    prediction = self.logits().argmax().item()
+    adversarial_prediction = self.perturbed_logits().argmax().item()
+
     if self.is_targeted:
       return adversarial_prediction == self.target
     else:
       return  prediction != adversarial_prediction
-    
-  @property
-  def is_targeted(self):
-      return self.target is not None
 
 class Builder(object):
   def __init__(self):
@@ -80,7 +103,6 @@ class Builder(object):
 
   def build(self, **args)->AdversarialExample: #the dictionary args contains additional parameters
     raise NotImplementedError()                #whose meaning will depend on the sub-class
-
 
 class LossFunction(object):
     def __init__(self, adv_example:AdversarialExample):

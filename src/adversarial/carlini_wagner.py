@@ -62,7 +62,8 @@ class CWAdversarialExample(AdversarialExample):
 
     super().__init__(
         pos=pos, edges=edges, faces=faces,
-        classifier=classifier, target=target)
+        classifier=classifier, target=target,
+        classifier_args=additional_model_args)
     # coefficients
     self.adversarial_coeff = torch.tensor([adversarial_coeff], device=self.device, dtype=self.dtype_float)
     self.regularization_coeff = torch.tensor([regularization_coeff], device=self.device, dtype=self.dtype_float)
@@ -75,9 +76,8 @@ class CWAdversarialExample(AdversarialExample):
 
     # for untargeted-attacks use second most probable class    
     if target is None:
-      Z = self.classifier(self.pos, **self.model_args)
-      values, index = torch.sort(Z, dim=0)
-      self.target = index[-2] 
+      values, index = torch.sort(self.logits, dim=0)
+      self._target = index[-2]
 
     # class components
     self.perturbation = None
@@ -97,18 +97,11 @@ class CWAdversarialExample(AdversarialExample):
     Ztarget, Zmax = Z[self.target], Z[argmax]
     return torch.max(Zmax - Ztarget, -self.k)
 
-  def total_loss(self):
-    loss = self.adversarial_coeff*self.adversarial_loss() + self.similarity_loss()
-    if self.regularization_loss is not None:
-      return loss + self.regularization_coeff*self.regularization_loss()
-    else:
-      return loss
-
-  def compute(self, usetqdm:str=None, PATIENCE=3):
+  def compute(self, usetqdm:str=None, patience=3):
     # reset variables
     self.perturbation.reset()
     self.logger.reset() #ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
-
+    
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate,betas=(0.5,0.75))
 
@@ -121,31 +114,39 @@ class CWAdversarialExample(AdversarialExample):
     else:
       raise ValueError("Invalid input for 'usetqdm', valid values are: None, 'standard' and 'notebook'.")
     
-    flag = False
-    counter = PATIENCE
+    flag, counter = False, patience
     last_r = self.perturbation.r.data.clone();
 
     for i in iterations:
-      if self.is_successful: # problem here
+      # compute loss
+      optimizer.zero_grad()
+      
+      # compute total loss
+      similarity_loss =  self.similarity_loss()
+      adversarial_loss = self.adversarial_coeff*self.adversarial_loss()
+      regularization_loss = 0 if self.regularization_loss is  None else self.regularization_coeff*self.regularization_loss()
+      loss = adversarial_loss + similarity_loss + regularization_loss
+      self.logger.log(self, i) #log results
+
+      # backpropagate
+      loss.backward()
+      optimizer.step()
+
+      # cutoff procedure to improve performance
+      is_successful = adversarial_loss <= 0
+      if is_successful: # NOTE problem here (this operation costs too much)
         counter -= 1
         if counter<=0:
             last_r.data = self.perturbation.r.data.clone()
             flag= True
       else: 
-        counter = PATIENCE
-            
-      if flag and not self.is_successful:
+        counter = patience
+
+      if flag and not is_successful:
         self.perturbation.r.data = last_r
         break;     # cutoff policy used to speed-up the tests
 
-      # compute loss
-      optimizer.zero_grad()
-      loss = self.total_loss()
-      self.logger.log(self, i) #log results
-      
-      # backpropagate
-      loss.backward()
-      optimizer.step()
+
 
 class CWBuilder(Builder):
   USETQDM = "usetqdm"
@@ -300,7 +301,7 @@ class AdversarialLoss(LossFunction):
         Ztarget, Zmax = Z[self.adv_example.target], Z[argmax]
         return torch.max(Zmax - Ztarget, -self.k)
 
-class ExponentialAdversarialLoss(lossFunction):
+class ExponentialAdversarialLoss(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
         super().__init__(adv_example)
     def __call__(self) -> torch.Tensor:
