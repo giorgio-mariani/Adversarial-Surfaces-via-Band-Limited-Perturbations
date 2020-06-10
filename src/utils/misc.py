@@ -105,7 +105,7 @@ def pos_areas(pos, faces): #TODO check correctness
   n = pos.shape[0]
   m = faces.shape[0]
   triareas = tri_areas(pos, faces)/3
-  posareas = torch.tensor(size=[n, 1], device=triareas.device, dtype=triareas.dtype)
+  posareas = torch.zeros(size=[n, 1], device=triareas.device, dtype=triareas.dtype)
   for i in range(3):
     posareas += tscatter.scatter_add(triareas, faces[:,i])
   return posareas
@@ -118,3 +118,7 @@ def least_square_meshes(pos, edges):
     return (tmp**2).sum()
 
 
+#---------------------------------------
+def drop_resolution(pos, downsampling_indices) -> torch.Tensor:
+  pos = pos[downsampling_indices]
+  return 

@@ -74,8 +74,8 @@ class AdversarialExample(object):
   # cached operations
   @property
   def is_successful(self) -> bool:
-    prediction = self.logits().argmax().item()
-    adversarial_prediction = self.perturbed_logits().argmax().item()
+    prediction = self.logits.argmax().item()
+    adversarial_prediction = self.perturbed_logits.argmax().item()
 
     if self.is_targeted:
       return adversarial_prediction == self.target

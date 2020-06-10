@@ -5,8 +5,11 @@ import networkx as nx
 import numpy as np
 import tqdm
 import torch
+from torch import Tensor
+from torch.nn import Module
 import torch.nn.functional as func
 import torch_sparse as tsparse
+from torch_geometric.data.data import Data
 import scipy.sparse
 
 import utils
@@ -88,14 +91,6 @@ class CWAdversarialExample(AdversarialExample):
   @property
   def perturbed_pos(self):
     return self.perturbation.perturb_positions()
-  
-  def adversarial_loss(self) -> torch.Tensor:
-    ppos = self.perturbed_pos
-    Z = self.classifier(ppos)
-    values, index = torch.sort(Z, dim=0)
-    argmax = index[-1] if index[-1] != self.target else index[-2] # max{Z(i): i != target}
-    Ztarget, Zmax = Z[self.target], Z[argmax]
-    return torch.max(Zmax - Ztarget, -self.k)
 
   def compute(self, usetqdm:str=None, patience=3):
     # reset variables
@@ -245,6 +240,9 @@ class CWBuilder(Builder):
     return optimal_example
 
 
+
+
+
 #==============================================================================
 # perturbation functions ------------------------------------------------------
 class Perturbation(object):
@@ -316,7 +314,6 @@ class CentroidRegularizer(LossFunction):
         centroid = torch.mean(self.adv_example.pos, dim=0)
         return torch.nn.functional.mse_loss(adv_centroid, centroid)
 
-
 # similarity functions --------------------------------------------------------
 class L2Similarity(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
@@ -351,3 +348,78 @@ class LocalEuclideanSimilarity(LossFunction):
         dist_r = torch.norm(Xr-ppos.view(n,1,3), p=2,dim=-1)
         dist_loss = torch.nn.functional.mse_loss(dist, dist_r, reduction="sum")
         return dist_loss
+
+try:
+  from knn_cuda import KNN
+  class ChamferSimilarity(LossFunction):
+      def __init__(self, adv_example:AdversarialExample):
+          super().__init__(adv_example)
+          self.knn = KNN(1, transpose_mode=True)
+
+      def __call__(self):
+        ppos = self.adv_example.perturbed_pos.view(1,-1,3)
+        pos =self.adv_example.pos.view(1,-1,3)
+        _, indx = knn(ref=pos, query=ppos)
+        diff = ppos - pos[indx.view(-1)]
+        term1 = diff.dot(diff).mean()
+
+        _, indx = knn(ref=ppos, query=pos)
+        diff = pos - ppos[indx.view(-1)]
+        term2 = diff.dot(diff).mean()
+        return term1 + term2
+
+  class HausdorffSimilarity(LossFunction):
+      def __init__(self, adv_example:AdversarialExample):
+          super().__init__(adv_example)
+          self.knn = KNN(1, transpose_mode=True)
+
+      def __call__(self):
+        ppos = self.adv_example.perturbed_pos.view(1,-1,3)
+        pos =self.adv_example.pos.view(1,-1,3)
+        _, indx = knn(ref=pos, query=ppos)
+        diff = ppos - pos[indx.view(-1)]
+        term1 = diff.dot(diff).max()
+
+        _, indx = knn(ref=ppos, query=pos)
+        diff = pos - ppos[indx.view(-1)]
+        term2 = diff.dot(diff).max()
+        return term1 + term2
+except ImportError as e:
+    pass
+
+#==============================================================================
+#------------------------------------------------------------------------------
+def generate_adversarial_example(
+    mesh:Data, classifier:Module, target:int,
+    lowband_perturbation=True, 
+    similarity_loss="local_euclidean", 
+    regularization="none", **args) -> CWAdversarialExample:
+    
+    builder = CWBuilder().set_mesh(mesh.pos,mesh.edge_index.t(), mesh.face.t())
+    builder.set_classifier(classifier).set_target(target)
+
+    # set type of perturbation
+    if lowband_perturbation:
+      eigs_num = args["eigs_num"]
+      builder.set_perturbation(perturbation_factory=lambda x:LowbandPerturbation(x,eigs_num=eigs_num))
+    else:
+      builder.set_perturbation(perturbation_factory=Perturbation)
+    
+    # set type of adversarial loss
+    builder.set_adversarial_loss(adv_loss_factory=AdversarialLoss)
+
+    # set type of similarity loss
+    if similarity_loss == "local_euclidean":
+      builder.set_similarity_loss(sim_loss_factory=LocalEuclideanSimilarity)
+    elif similarity_loss == "l2":
+      builder.set_similarity_loss(sim_loss_factory=L2Similarity)
+    else: raise ValueError()
+
+    # set type of regularizer
+    if regularization != "none":
+      if regularization == "centroid":
+        builder.set_regularization_loss(regularizer_factory=CentroidRegularizer)
+      else: raise ValueError()
+
+    return builder.build(**args)
+ 
