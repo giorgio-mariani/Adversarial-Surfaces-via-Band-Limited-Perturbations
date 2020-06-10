@@ -104,8 +104,7 @@ def generate_adversarial_example(
             transforms.append(lambda x: LowBandTransform(x,eigs_num=eigs_num))
         elif lowband_transform =="dynamic":
             transforms.append(lambda x: DynamicLowBandTransform(x,eigs_num=eigs_num))
-
-
+        else: raise ValueError()
 
     if clip_transform != "none":
         epsilon = args["epsilon"]

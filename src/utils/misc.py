@@ -110,6 +110,28 @@ def pos_areas(pos, faces): #TODO check correctness
     posareas += tscatter.scatter_add(triareas, faces[:,i])
   return posareas
 
+#------------------------------------------------------------------------------
+def tri_normals(pos, faces):
+    check_data(pos=pos, faces=faces)
+    v1 = pos[faces[:, 0], :]
+    v2 = pos[faces[:, 1], :]
+    v3 = pos[faces[:, 2], :]
+    v1 = v1 - v3
+    v2 = v2 - v3
+    normals =  torch.cross(v1, v2, dim=1)
+    return normals/normals.norm(p=2,dim=1,keepdim=True)
+
+def pos_normals(pos, faces):
+  check_data(pos=pos, faces=faces)
+  n, m = pos.shape[0], faces.shape[0] 
+  trinormals = tri_normals(pos, faces)
+  posnormals = torch.zeros(size=[n, 3], device=trinormals.device, dtype=trinormals.dtype)
+  for i in range(3):
+    for j in range(3):
+      posnormals[:,j] +=  tscatter.scatter_add(trinormals[:,j], faces[:,i], dim_size=n)
+  return posnormals/posnormals.norm(p=2,dim=1,keepdim=True)
+
+#------------------------------------------------------------------------------
 def least_square_meshes(pos, edges):
     check_data(pos=pos, edges=edges)
     laplacian = torch_geometric.utils.get_laplacian(edges.t(), normalization="rw")

@@ -274,15 +274,18 @@ class LowbandPerturbation(object):
     self.reset()
 
   def reset(self):
-    self.r = torch.zeros(
+    self.r:torch.Tensor = torch.zeros(
       [self.eigs_num, 3], 
       device=self.adv_example.device, 
       dtype=self.adv_example.dtype_float, 
       requires_grad=True)
+    
+    #def hook(grad): self.changed = True
+    #self.r.register_hook(hook)
 
   def perturb_positions(self):
     pos, r = self.adv_example.pos, self.r
-    return pos + self.eigvecs.matmul(r)
+    return pos + self.eigvecs.matmul(r)  
 
 #===============================================================================
 # adversarial losses ----------------------------------------------------------
@@ -384,6 +387,33 @@ try:
         diff = pos - ppos[indx.view(-1)]
         term2 = diff.dot(diff).max()
         return term1 + term2
+
+  class CurvatureSimilarity(LossFunction):
+    def __init__(self, adv_example:AdversarialExample, neighbourhood=30):
+        super().__init__(adv_example)
+        self.k = neighbourhood
+        self.knn = KNN(self.k, transpose_mode=True)
+        self.normals = utils.misc.pos_normals(self.pos,self.faces)
+        self.curv = _curvature(self.pos)
+
+    def _curvature(self, pos):
+      dist, indx = knn(ref=pos, query=pos)
+      dist.view_(-1, self.k)
+      
+      term = (pos[indx.view(-1),:]).view(-1, self.k, 3)
+      diff = pos.view(-1, 1, 3) - term
+      
+      print(term.shape)
+      print((diff.norm(p=2,dim=2)-dist).abs().max())
+      curvature = (diff/dist).mm(normals).abs().mean(dim=1)
+      return curvature
+
+    def __call__(self):
+      ppos = self.adv_example.perturbed_pos
+      diff = self.curv - _curvature(ppos)
+      loss = diff.mm(diff).mean()
+      return loss
+
 except ImportError as e:
     pass
 
