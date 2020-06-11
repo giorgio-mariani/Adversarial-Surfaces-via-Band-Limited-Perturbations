@@ -61,7 +61,7 @@ class CWAdversarialExample(AdversarialExample):
     minimization_iterations:int,
     learning_rate:float,    
     additional_model_args:dict,
-    logger:ValueLogger=ValueLogger()):
+    log_data:bool):
 
     super().__init__(
         pos=pos, edges=edges, faces=faces,
@@ -74,8 +74,14 @@ class CWAdversarialExample(AdversarialExample):
     # other parameters
     self.minimization_iterations = minimization_iterations
     self.learning_rate = learning_rate
-    self.logger = logger
     self.model_args = additional_model_args
+    if log_data:
+      {"adversarial":lambda x: x.adversarial_loss().item(),
+       "similarity": lambda x: x.similarity_loss().item(),
+       "regularization":lambda x: x.regularization_loss().item()}
+      self.logger = ValueLogger()
+    else:
+      self.logger = ValueLogger()
 
     # for untargeted-attacks use second most probable class    
     if target is None:
@@ -86,7 +92,8 @@ class CWAdversarialExample(AdversarialExample):
     self.perturbation = None
     self.adversarial_loss = None
     self.similarity_loss = None
-    self.regularization_loss = None
+    self.regularization_loss = lambda :self._zero
+    self._zero = torch.tensor(0,dtype=self.dtype_float,device=self.device)
 
   @property
   def perturbed_pos(self):
@@ -95,7 +102,7 @@ class CWAdversarialExample(AdversarialExample):
   def compute(self, usetqdm:str=None, patience=3):
     # reset variables
     self.perturbation.reset()
-    self.logger.reset() #ValueLogger({"adversarial":lambda x:x.adversarial_loss()})
+    self.logger.reset()
     
     # compute gradient w.r.t. the perturbation
     optimizer = torch.optim.Adam([self.perturbation.r], lr=self.learning_rate,betas=(0.5,0.75))
@@ -119,7 +126,7 @@ class CWAdversarialExample(AdversarialExample):
       # compute total loss
       similarity_loss =  self.similarity_loss()
       adversarial_loss = self.adversarial_coeff*self.adversarial_loss()
-      regularization_loss = 0 if self.regularization_loss is  None else self.regularization_coeff*self.regularization_loss()
+      regularization_loss = self.regularization_coeff*self.regularization_loss()
       loss = adversarial_loss + similarity_loss + regularization_loss
       self.logger.log(self, i) #log results
 
@@ -134,6 +141,7 @@ class CWAdversarialExample(AdversarialExample):
         counter = patience
 
       if flag and not is_successful:
+        self.perturbation.reset() # NOTE required to clean cache
         self.perturbation.r.data = last_r
         break;     # cutoff policy used to speed-up the tests
 
@@ -149,6 +157,7 @@ class CWBuilder(Builder):
   MIN_IT = "minimization_iterations"
   LEARN_RATE = "learning_rate"
   MODEL_ARGS = "additional_model_args"
+  LOG ="log_data"
 
   def __init__(self, search_iterations=1):
     super().__init__()
@@ -176,9 +185,6 @@ class CWBuilder(Builder):
     self._regularizer_factory = regularizer_factory
     return self
   
-  def set_logger(self, logger:ValueLogger):
-    self.logger = logger
-    return self
 
   def build(self, **args:dict) -> AdversarialExample:
     usetqdm = args.get(CWBuilder.USETQDM, False)
@@ -187,9 +193,10 @@ class CWBuilder(Builder):
     self.adex_data[CWBuilder.REG_COEFF] = args.get(CWBuilder.REG_COEFF, 1)
     self.adex_data[CWBuilder.LEARN_RATE] = args.get(CWBuilder.LEARN_RATE, 1e-3)
     self.adex_data[CWBuilder.MODEL_ARGS] = args.get(CWBuilder.MODEL_ARGS, dict())
-    start_adv_coeff = self.adex_data[CWBuilder.ADV_COEFF]
+    self.adex_data[CWBuilder.LOG] = args.get(CWBuilder.LOG, False)
     
-    # exponential search variable
+    # exponential search variables
+    start_adv_coeff = self.adex_data[CWBuilder.ADV_COEFF]
     range_min, range_max = 0, start_adv_coeff
     optimal_example = None 
     exp_search = True # flag used to detected whether it is the 
@@ -315,8 +322,7 @@ class AdversarialLoss(LossFunction):
         self.k = torch.tensor([k], device=adv_example.device, dtype=adv_example.dtype_float)
 
     def __call__(self) -> torch.Tensor:
-        ppos = self.adv_example.perturbed_pos
-        Z = self.adv_example.classifier(ppos)
+        Z = self.adv_example.perturbed_logits
         values, index = torch.sort(Z, dim=0)
         argmax = index[-1] if index[-1] != self.adv_example.target else index[-2] # max{Z(i): i != target}
         Ztarget, Zmax = Z[self.adv_example.target], Z[argmax]
@@ -325,13 +331,16 @@ class AdversarialLoss(LossFunction):
 class ExponentialAdversarialLoss(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
         super().__init__(adv_example)
+
     def __call__(self) -> torch.Tensor:
-      raise NotImplementedError()
+      plogits = self.adv_example.perturbed_logits
+      torch.nn.functional.log_softmax(plogits, dim=-1)
 
 # regularizers ----------------------------------------------------------------
 class CentroidRegularizer(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
         super().__init__(adv_example)
+
     def __call__(self):
         adv_centroid = torch.mean(self.adv_example.perturbed_pos, dim=0)
         centroid = torch.mean(self.adv_example.pos, dim=0)
@@ -387,7 +396,7 @@ try:
         term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean() 
 
         _, indx = self.knn(ref=ppos, query=pos)
-        diff = ppos - pos[0,indx.view(-1),:]
+        diff = pos - ppos[0,indx.view(-1),:]
         term2 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean()
         return term1 + term2
 
@@ -402,11 +411,7 @@ try:
         _, indx = self.knn(ref=pos, query=ppos)
         diff = ppos - pos[0,indx.view(-1),:]
         term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).max() 
-
-        _, indx = self.knn(ref=ppos, query=pos)
-        diff = ppos - pos[0,indx.view(-1),:]
-        term2 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).max()
-        return term1 + term2
+        return term1 
 
   class CurvatureSimilarity(LossFunction):
     def __init__(self, adv_example:AdversarialExample, neighbourhood=30):
@@ -420,18 +425,12 @@ try:
       k = self.k
       _, nn = self.knn(ref=pos.view(1,-1,3), query=pos.view(1,-1,3))
       nn = nn.view(-1)
-      #dist_nn = dist_nn.view(-1)
 
       diff = (pos.view(-1,1,3) - (pos[nn, :]).view(-1, k+1, 3)).view(-1,3)
-      diff_norm = diff.norm(p=2, dim=-1)
+      normalized_diff = torch.nn.functional.normalize(diff,p=2, dim=-1)
+      normalized_diff = normalized_diff.view(-1, k+1, 3) # shape [N,k+1,3]
 
-      #compute vectors in "tangent plane"
-      I = diff_norm.view(-1) != 0
-      tmp = diff[I,:]/diff_norm[I].view(-1,1)  # avoid division by zero
-      diff[I,:] = tmp
-      diff = diff.view(-1, k+1, 3) # shape [N,k+1,3]
-
-      cosine_sim = torch.bmm(diff, self.normals.view(-1, 3,1)).abs().view(-1, k+1)
+      cosine_sim = torch.bmm(normalized_diff, self.normals.view(-1, 3,1)).abs().view(-1, k+1)
       curvature = cosine_sim[:,1:].mean(dim=1)
       return curvature
 
