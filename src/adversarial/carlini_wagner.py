@@ -123,13 +123,9 @@ class CWAdversarialExample(AdversarialExample):
       loss = adversarial_loss + similarity_loss + regularization_loss
       self.logger.log(self, i) #log results
 
-      # backpropagate
-      loss.backward()
-      optimizer.step()
-
       # cutoff procedure to improve performance
       is_successful = adversarial_loss <= 0
-      if is_successful: # NOTE problem here (this operation costs too much)
+      if is_successful:
         counter -= 1
         if counter<=0:
             last_r.data = self.perturbation.r.data.clone()
@@ -141,6 +137,9 @@ class CWAdversarialExample(AdversarialExample):
         self.perturbation.r.data = last_r
         break;     # cutoff policy used to speed-up the tests
 
+      # backpropagate
+      loss.backward()
+      optimizer.step()
 
 
 class CWBuilder(Builder):
@@ -248,44 +247,65 @@ class CWBuilder(Builder):
 class Perturbation(object):
   def __init__(self, adv_example:CWAdversarialExample):
     super().__init__()
-    self.r = None
-    self.adv_example = adv_example
-    self.reset()
+    self._r = None
+    self._adv_example = adv_example
+    self._perturbed_pos_cache = None
 
-  def reset(self):
-    self.r = torch.zeros(
+    self.reset()
+  
+  @property
+  def r(self): return self._r
+  @property
+  def adv_example(self): return self._adv_example
+
+  def _reset(self):
+    self._r = torch.zeros(
       [self.adv_example.vertex_count, 3], 
       device=self.adv_example.device, 
       dtype=self.adv_example.dtype_float, 
       requires_grad=True)
 
-  def perturb_positions(self):
+  def reset(self):
+    self._reset()
+    def hook(grad): self._perturbed_pos_cache = None
+    self.r.register_hook(hook)
+
+  def _perturb_positions(self):
     pos, r = self.adv_example.pos, self.r
     return pos + r
 
-class LowbandPerturbation(object):
+  def perturb_positions(self):
+    if self._perturbed_pos_cache is None:
+      self._perturbed_pos_cache = self._perturb_positions()
+    return self._perturbed_pos_cache
+    
+class LowbandPerturbation(Perturbation):
   def __init__(self, adv_example, eigs_num=50):
-    super().__init__()
-    self.r = None
-    self.adv_example = adv_example
-    self.eigs_num = eigs_num
-    self.eigvals,self.eigvecs = utils.eigenpairs(
-      self.adv_example.pos, self.adv_example.faces, K=eigs_num)
-    self.reset()
+    self._eigs_num = eigs_num
+    self._eigvals, self._eigvecs = utils.eigenpairs(
+      adv_example.pos, adv_example.faces, K=eigs_num)
+    super().__init__(adv_example)
 
-  def reset(self):
-    self.r:torch.Tensor = torch.zeros(
+  @property
+  def eigs_num(self): return self._eigs_num
+  @property
+  def eigvals(self):return self._eigvals
+  @property
+  def eigvecs(self):return self._eigvecs
+
+  def _reset(self):
+    self._r:torch.Tensor = torch.zeros(
       [self.eigs_num, 3], 
       device=self.adv_example.device, 
       dtype=self.adv_example.dtype_float, 
       requires_grad=True)
-    
-    #def hook(grad): self.changed = True
-    #self.r.register_hook(hook)
+  
+  def _perturb_positions(self):
+    return self.adv_example.pos + self.eigvecs.matmul(self.r)
 
-  def perturb_positions(self):
-    pos, r = self.adv_example.pos, self.r
-    return pos + self.eigvecs.matmul(r)  
+
+
+
 
 #===============================================================================
 # adversarial losses ----------------------------------------------------------
@@ -333,7 +353,7 @@ class LocalEuclideanSimilarity(LossFunction):
     def __init__(self, adv_example:AdversarialExample, K:int=30):
         super().__init__(adv_example)
         self.neighborhood = K
-        self.kNN = kNN(
+        self.kNN = utils.misc.kNN(
             pos=self.adv_example.pos, 
             edges=self.adv_example.edges, 
             neighbors_num=self.neighborhood, 
@@ -362,13 +382,13 @@ try:
       def __call__(self):
         ppos = self.adv_example.perturbed_pos.view(1,-1,3)
         pos =self.adv_example.pos.view(1,-1,3)
-        _, indx = knn(ref=pos, query=ppos)
-        diff = ppos - pos[indx.view(-1)]
-        term1 = diff.dot(diff).mean()
+        _, indx = self.knn(ref=pos, query=ppos)
+        diff = ppos - pos[0,indx.view(-1),:]
+        term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean() 
 
-        _, indx = knn(ref=ppos, query=pos)
-        diff = pos - ppos[indx.view(-1)]
-        term2 = diff.dot(diff).mean()
+        _, indx = self.knn(ref=ppos, query=pos)
+        diff = ppos - pos[0,indx.view(-1),:]
+        term2 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean()
         return term1 + term2
 
   class HausdorffSimilarity(LossFunction):
@@ -379,40 +399,60 @@ try:
       def __call__(self):
         ppos = self.adv_example.perturbed_pos.view(1,-1,3)
         pos =self.adv_example.pos.view(1,-1,3)
-        _, indx = knn(ref=pos, query=ppos)
-        diff = ppos - pos[indx.view(-1)]
-        term1 = diff.dot(diff).max()
+        _, indx = self.knn(ref=pos, query=ppos)
+        diff = ppos - pos[0,indx.view(-1),:]
+        term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).max() 
 
-        _, indx = knn(ref=ppos, query=pos)
-        diff = pos - ppos[indx.view(-1)]
-        term2 = diff.dot(diff).max()
+        _, indx = self.knn(ref=ppos, query=pos)
+        diff = ppos - pos[0,indx.view(-1),:]
+        term2 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).max()
         return term1 + term2
 
   class CurvatureSimilarity(LossFunction):
     def __init__(self, adv_example:AdversarialExample, neighbourhood=30):
         super().__init__(adv_example)
         self.k = neighbourhood
-        self.knn = KNN(self.k, transpose_mode=True)
-        self.normals = utils.misc.pos_normals(self.pos,self.faces)
-        self.curv = _curvature(self.pos)
+        self.knn = KNN(self.k+1, transpose_mode=True)
+        self.normals = utils.misc.pos_normals(adv_example.pos,adv_example.faces)
+        self.curv = self._curvature(adv_example.pos)
 
     def _curvature(self, pos):
-      dist, indx = knn(ref=pos, query=pos)
-      dist.view_(-1, self.k)
-      
-      term = (pos[indx.view(-1),:]).view(-1, self.k, 3)
-      diff = pos.view(-1, 1, 3) - term
-      
-      print(term.shape)
-      print((diff.norm(p=2,dim=2)-dist).abs().max())
-      curvature = (diff/dist).mm(normals).abs().mean(dim=1)
+      k = self.k
+      _, nn = self.knn(ref=pos.view(1,-1,3), query=pos.view(1,-1,3))
+      nn = nn.view(-1)
+      #dist_nn = dist_nn.view(-1)
+
+      diff = (pos.view(-1,1,3) - (pos[nn, :]).view(-1, k+1, 3)).view(-1,3)
+      diff_norm = diff.norm(p=2, dim=-1)
+
+      #compute vectors in "tangent plane"
+      I = diff_norm.view(-1) != 0
+      tmp = diff[I,:]/diff_norm[I].view(-1,1)  # avoid division by zero
+      diff[I,:] = tmp
+      diff = diff.view(-1, k+1, 3) # shape [N,k+1,3]
+
+      cosine_sim = torch.bmm(diff, self.normals.view(-1, 3,1)).abs().view(-1, k+1)
+      curvature = cosine_sim[:,1:].mean(dim=1)
       return curvature
 
     def __call__(self):
       ppos = self.adv_example.perturbed_pos
-      diff = self.curv - _curvature(ppos)
-      loss = diff.mm(diff).mean()
+      diff = self.curv - self._curvature(ppos)
+      loss = (diff**2).mean()
       return loss
+
+  class GeoA3Similarity(LossFunction):
+      def __init__(self, adv_example:AdversarialExample, lambda1:float=0.1, lambda2:float=1, neighbourhood:int=30):
+          super().__init__(adv_example)
+          self.curvature_loss = CurvatureSimilarity(adv_example=adv_example, neighbourhood=neighbourhood)
+          self.hausdorff_loss = HausdorffSimilarity(adv_example=adv_example)
+          self.chamfer_loss = ChamferSimilarity(adv_example=adv_example)
+          self.lambda1 = torch.tensor(lambda1, device=adv_example.device, dtype=adv_example.dtype_float)
+          self.lambda2 = torch.tensor(lambda2, device=adv_example.device, dtype=adv_example.dtype_float)
+
+      def __call__(self):
+        loss = self.chamfer_loss() + self.lambda1*self.hausdorff_loss() + self.lambda2*self.curvature_loss()
+        return loss
 
 except ImportError as e:
     pass

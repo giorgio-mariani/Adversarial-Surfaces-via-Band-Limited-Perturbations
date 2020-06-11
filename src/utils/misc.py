@@ -100,14 +100,15 @@ def tri_areas(pos, faces):
     v2 = v2 - v3
     return torch.norm(torch.cross(v1, v2, dim=1), dim=1) * .5
 
-def pos_areas(pos, faces): #TODO check correctness
+def pos_areas(pos, faces):
   check_data(pos=pos, faces=faces)
   n = pos.shape[0]
   m = faces.shape[0]
   triareas = tri_areas(pos, faces)/3
-  posareas = torch.zeros(size=[n, 1], device=triareas.device, dtype=triareas.dtype)
+  posareas = torch.zeros(size=[n], device=triareas.device, dtype=triareas.dtype)
   for i in range(3):
-    posareas += tscatter.scatter_add(triareas, faces[:,i])
+    tmp = tscatter.scatter_add(triareas, faces[:,i], dim_size=n)
+    posareas += tmp
   return posareas
 
 #------------------------------------------------------------------------------
