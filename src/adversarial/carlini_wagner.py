@@ -383,21 +383,29 @@ class LocalEuclideanSimilarity(LossFunction):
 
 try:
   from knn_cuda import KNN
+
+  def _grad_distances(ref, query, n, k, knn) -> torch.Tensor: #NOTE output tensor shape [N,k,3]
+        ref = ref.view(1,n,3)
+        query = query.view(1,n,3)
+        d, I = knn(ref=ref, query=query)
+        diff = query - ref[0, I.view(-1),:]
+        #print((d.view(-1)-diff.view(-1)).abs().max()) #NOTE check if correct
+        return diff.view(n,k,3)
+
   class ChamferSimilarity(LossFunction):
       def __init__(self, adv_example:AdversarialExample):
           super().__init__(adv_example)
           self.knn = KNN(1, transpose_mode=True)
 
       def __call__(self):
-        ppos = self.adv_example.perturbed_pos.view(1,-1,3)
-        pos =self.adv_example.pos.view(1,-1,3)
-        _, indx = self.knn(ref=pos, query=ppos)
-        diff = ppos - pos[0,indx.view(-1),:]
-        term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean() 
+        pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
+        n, k = self.adv_example.vertex_count, 1
+        
+        diff = _grad_distances(ref=pos,query=ppos,n=n,k=1, knn=self.knn)
+        term1 = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).mean() 
 
-        _, indx = self.knn(ref=ppos, query=pos)
-        diff = pos - ppos[0,indx.view(-1),:]
-        term2 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).mean()
+        diff = _grad_distances(ref=ppos,query=pos,n=n,k=k, knn=self.knn)
+        term2 = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).mean()
         return term1 + term2
 
   class HausdorffSimilarity(LossFunction):
@@ -406,37 +414,36 @@ try:
           self.knn = KNN(1, transpose_mode=True)
 
       def __call__(self):
-        ppos = self.adv_example.perturbed_pos.view(1,-1,3)
-        pos =self.adv_example.pos.view(1,-1,3)
-        _, indx = self.knn(ref=pos, query=ppos)
-        diff = ppos - pos[0,indx.view(-1),:]
-        term1 = torch.bmm(diff.view(-1,1,3), diff.view(-1,3,1)).max() 
-        return term1 
+        pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
+        n, k = self.adv_example.vertex_count, 1
+
+        diff = _grad_distances(ref=pos, query=ppos,n=n, k=k, knn=self.knn)
+        loss = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).max()
+        return loss
 
   class CurvatureSimilarity(LossFunction):
     def __init__(self, adv_example:AdversarialExample, neighbourhood=30):
         super().__init__(adv_example)
         self.k = neighbourhood
         self.knn = KNN(self.k+1, transpose_mode=True)
-        self.normals = utils.misc.pos_normals(adv_example.pos,adv_example.faces)
+        self.normals = utils.misc.pos_normals(adv_example.pos, adv_example.faces)
         self.curv = self._curvature(adv_example.pos)
 
     def _curvature(self, pos):
-      k = self.k
-      _, nn = self.knn(ref=pos.view(1,-1,3), query=pos.view(1,-1,3))
-      nn = nn.view(-1)
+      n, k = self.adv_example.vertex_count, self.k
+      diff = _grad_distances(ref=pos, query=pos,n=n, k=k+1, knn=self.knn)
+      normalized_diff = torch.nn.functional.normalize(diff, p=2, dim=-1)  # NOTE shape [N,k+1,3]
+      #normalized_diff = normalized_diff.view(n, k+1, 3)
 
-      diff = (pos.view(-1,1,3) - (pos[nn, :]).view(-1, k+1, 3)).view(-1,3)
-      normalized_diff = torch.nn.functional.normalize(diff,p=2, dim=-1)
-      normalized_diff = normalized_diff.view(-1, k+1, 3) # shape [N,k+1,3]
-
-      cosine_sim = torch.bmm(normalized_diff, self.normals.view(-1, 3,1)).abs().view(-1, k+1)
-      curvature = cosine_sim[:,1:].mean(dim=1)
+      cosine_sim = torch.bmm(
+        normalized_diff .view(n, k+1, 3),
+        self.normals    .view(n, 3, 1))
+      abs_cosine_sim = cosine_sim.abs().view(n, k+1)
+      curvature = abs_cosine_sim[:,1:].mean(dim=1) #remove first column (all zeros) and compute the cosine mean for each column
       return curvature
 
     def __call__(self):
-      ppos = self.adv_example.perturbed_pos
-      diff = self.curv - self._curvature(ppos)
+      diff = self.curv - self._curvature(self.adv_example.perturbed_pos)
       loss = (diff**2).mean()
       return loss
 
