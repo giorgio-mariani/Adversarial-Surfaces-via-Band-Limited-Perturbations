@@ -28,7 +28,7 @@ class ValueLogger(object):
         self.logged_values[n] = []
 
     for n,f in self.value_functions.items():
-      self.add_value_name(n,f)
+      self.value_functions[n] = f
 
   def reset(self):
     for func, values in self.logged_values.items():
@@ -37,7 +37,7 @@ class ValueLogger(object):
   def log(self, adv_example, iteration):
     if self.log_interval != 0 and iteration % self.log_interval == 0:
       for n,f in self.value_functions.items():
-        v = f(adv_example).item()
+        v = f(adv_example)
         self.logged_values[n].append(v)
 
   def show(self):
@@ -76,10 +76,10 @@ class CWAdversarialExample(AdversarialExample):
     self.learning_rate = learning_rate
     self.model_args = additional_model_args
     if log_data:
-      {"adversarial":lambda x: x.adversarial_loss().item(),
+      tmp = {"adversarial":lambda x: x.adversarial_loss().item(),
        "similarity": lambda x: x.similarity_loss().item(),
        "regularization":lambda x: x.regularization_loss().item()}
-      self.logger = ValueLogger()
+      self.logger = ValueLogger(tmp)
     else:
       self.logger = ValueLogger()
 
@@ -167,7 +167,7 @@ class CWBuilder(Builder):
     self._perturbation_factory = LowbandPerturbation
     self._adversarial_loss_factory = AdversarialLoss
     self._similarity_loss_factory = L2Similarity
-    self._regularizer_factory = lambda x: None
+    self._regularizer_factory = None
 
   def set_perturbation(self, perturbation_factory):
     self._perturbation_factory = perturbation_factory
@@ -216,7 +216,8 @@ class CWBuilder(Builder):
       adex.adversarial_loss = self._adversarial_loss_factory(adex)
       adex.perturbation = self._perturbation_factory(adex)
       adex.similarity_loss = self._similarity_loss_factory(adex)
-      adex.regularization_loss = self._regularizer_factory(adex)
+      if self._regularizer_factory is not None:
+        adex.regularization_loss = self._regularizer_factory(adex)
       adex.compute(usetqdm=usetqdm)
 
       # get perturbation
@@ -384,13 +385,13 @@ class LocalEuclideanSimilarity(LossFunction):
 try:
   from knn_cuda import KNN
 
-  def _grad_distances(ref, query, n, k, knn) -> torch.Tensor: #NOTE output tensor shape [N,k,3]
+  def _grad_distances(ref, query, n, k, knn) -> torch.Tensor: #NOTE output tensor shape [n,k,3]
         ref = ref.view(1,n,3)
         query = query.view(1,n,3)
         d, I = knn(ref=ref, query=query)
-        diff = query - ref[0, I.view(-1),:]
-        #print((d.view(-1)-diff.view(-1)).abs().max()) #NOTE check if correct
-        return diff.view(n,k,3)
+        diff = query.view(n,1,3) - ref[0, I.view(-1),:].view(n,k,3) #shape [n,k,3]
+        #print((d.view(-1) - diff.norm(p=2,dim=-1).view(-1)).abs().max()) #NOTE check if correct
+        return diff.view(n,k,3), I
 
   class ChamferSimilarity(LossFunction):
       def __init__(self, adv_example:AdversarialExample):
@@ -401,10 +402,10 @@ try:
         pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
         n, k = self.adv_example.vertex_count, 1
         
-        diff = _grad_distances(ref=pos,query=ppos,n=n,k=1, knn=self.knn)
+        diff, _ = _grad_distances(ref=pos,query=ppos,n=n,k=1, knn=self.knn)
         term1 = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).mean() 
 
-        diff = _grad_distances(ref=ppos,query=pos,n=n,k=k, knn=self.knn)
+        diff, _ = _grad_distances(ref=ppos,query=pos,n=n,k=k, knn=self.knn)
         term2 = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).mean()
         return term1 + term2
 
@@ -417,7 +418,7 @@ try:
         pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
         n, k = self.adv_example.vertex_count, 1
 
-        diff = _grad_distances(ref=pos, query=ppos,n=n, k=k, knn=self.knn)
+        diff, _ = _grad_distances(ref=pos, query=ppos,n=n, k=k, knn=self.knn)
         loss = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).max()
         return loss
 
@@ -426,24 +427,28 @@ try:
         super().__init__(adv_example)
         self.k = neighbourhood
         self.knn = KNN(self.k+1, transpose_mode=True)
+        self.nn = KNN(1, transpose_mode=True)
         self.normals = utils.misc.pos_normals(adv_example.pos, adv_example.faces)
-        self.curv = self._curvature(adv_example.pos)
+        self.curv = self._curvature(adv_example.pos, self.normals)
 
-    def _curvature(self, pos):
+    def _curvature(self, pos, normals):
       n, k = self.adv_example.vertex_count, self.k
-      diff = _grad_distances(ref=pos, query=pos,n=n, k=k+1, knn=self.knn)
+      diff, knn_idx = _grad_distances(ref=pos, query=pos,n=n, k=k+1, knn=self.knn)
       normalized_diff = torch.nn.functional.normalize(diff, p=2, dim=-1)  # NOTE shape [N,k+1,3]
-      #normalized_diff = normalized_diff.view(n, k+1, 3)
 
       cosine_sim = torch.bmm(
-        normalized_diff .view(n, k+1, 3),
-        self.normals    .view(n, 3, 1))
+        normalized_diff.view(n, k+1, 3),
+        normals.view(n, 3, 1))
+
       abs_cosine_sim = cosine_sim.abs().view(n, k+1)
       curvature = abs_cosine_sim[:,1:].mean(dim=1) #remove first column (all zeros) and compute the cosine mean for each column
       return curvature
 
     def __call__(self):
-      diff = self.curv - self._curvature(self.adv_example.perturbed_pos)
+      pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
+      _, nn_idx = self.nn(ref=pos, query=ppos)
+      perturbed_normals = self.normals[nn_idx.view(-1),:]
+      diff = self.curv - self._curvature(ppos, perturbed_normals)
       loss = (diff**2).mean()
       return loss
 
