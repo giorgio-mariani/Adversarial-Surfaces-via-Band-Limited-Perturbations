@@ -258,7 +258,6 @@ class Perturbation(object):
     self._r = None
     self._adv_example = adv_example
     self._perturbed_pos_cache = None
-
     self.reset()
   
   @property
@@ -275,6 +274,7 @@ class Perturbation(object):
 
   def reset(self):
     self._reset()
+    self._perturbed_pos_cache = None
     def hook(grad): self._perturbed_pos_cache = None
     self.r.register_hook(hook)
 
@@ -329,13 +329,14 @@ class AdversarialLoss(LossFunction):
         Ztarget, Zmax = Z[self.adv_example.target], Z[argmax]
         return torch.max(Zmax - Ztarget, -self.k)
 
-class ExponentialAdversarialLoss(LossFunction):
+class LogSoftmaxAdversarialLoss(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
         super().__init__(adv_example)
 
     def __call__(self) -> torch.Tensor:
       plogits = self.adv_example.perturbed_logits
-      torch.nn.functional.log_softmax(plogits, dim=-1)
+      loss = -torch.nn.functional.log_softmax(plogits, dim=-1).view(-1)[self.adv_example.target]
+      return loss
 
 # regularizers ----------------------------------------------------------------
 class CentroidRegularizer(LossFunction):
@@ -446,14 +447,16 @@ try:
 
     def __call__(self):
       pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
-      _, nn_idx = self.nn(ref=pos, query=ppos)
+      n = self.adv_example.vertex_count
+
+      _, nn_idx = self.nn(ref=pos.view(1,n,3), query=ppos.view(1,n,3))
       perturbed_normals = self.normals[nn_idx.view(-1),:]
       diff = self.curv - self._curvature(ppos, perturbed_normals)
       loss = (diff**2).mean()
       return loss
 
   class GeoA3Similarity(LossFunction):
-      def __init__(self, adv_example:AdversarialExample, lambda1:float=0.1, lambda2:float=1, neighbourhood:int=30):
+      def __init__(self, adv_example:AdversarialExample, lambda1:float=0.1, lambda2:float=1, neighbourhood:int=16):
           super().__init__(adv_example)
           self.curvature_loss = CurvatureSimilarity(adv_example=adv_example, neighbourhood=neighbourhood)
           self.hausdorff_loss = HausdorffSimilarity(adv_example=adv_example)
@@ -473,6 +476,7 @@ except ImportError as e:
 def generate_adversarial_example(
     mesh:Data, classifier:Module, target:int,
     lowband_perturbation=True, 
+    adversarial_loss="carlini_wagner",
     similarity_loss="local_euclidean", 
     regularization="none", **args) -> CWAdversarialExample:
     
@@ -487,13 +491,20 @@ def generate_adversarial_example(
       builder.set_perturbation(perturbation_factory=Perturbation)
     
     # set type of adversarial loss
-    builder.set_adversarial_loss(adv_loss_factory=AdversarialLoss)
+    if adversarial_loss == "carlini_wagner":
+      builder.set_adversarial_loss(adv_loss_factory=AdversarialLoss)
+    elif adversarial_loss == "log_softmax":
+      builder.set_adversarial_loss(adv_loss_factory=LogSoftmaxAdversarialLoss)
+    else:
+      raise ValueError()
 
     # set type of similarity loss
     if similarity_loss == "local_euclidean":
       builder.set_similarity_loss(sim_loss_factory=LocalEuclideanSimilarity)
     elif similarity_loss == "l2":
       builder.set_similarity_loss(sim_loss_factory=L2Similarity)
+    elif similarity_loss == "GeoA3":
+      builder.set_similarity_loss(sim_loss_factory=GeoA3Similarity)
     else: raise ValueError()
 
     # set type of regularizer

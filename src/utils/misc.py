@@ -132,6 +132,17 @@ def pos_normals(pos, faces):
       posnormals[:,j] +=  tscatter.scatter_add(trinormals[:,j], faces[:,i], dim_size=n)
   return posnormals/posnormals.norm(p=2,dim=1,keepdim=True)
 
+
+#-----------------------------------------------------------------------------
+def l2_distance(pos, ppos, faces):
+    check_data(pos=pos, faces=faces)
+    check_data(pos=ppos)
+    diff = pos - ppos
+    area = pos_areas(pos,faces)
+    weight_diff = diff*torch.sqrt(area.view(-1,1))
+    L2 = weight_diff.norm(p="fro")
+    return L2
+    
 #------------------------------------------------------------------------------
 def least_square_meshes(pos, edges):
     check_data(pos=pos, edges=edges)
@@ -142,6 +153,25 @@ def least_square_meshes(pos, edges):
 
 
 #---------------------------------------
-def drop_resolution(pos, downsampling_indices) -> torch.Tensor:
-  pos = pos[downsampling_indices]
-  return 
+
+try:
+  from knn_cuda import KNN
+
+  def knn(ref, query, n, k) -> torch.Tensor:
+        ref = ref.view(1,n,3)
+        query = query.view(1,n,3)
+        d, I = KNN(k, transpose_mode=True)(ref=ref, query=query)
+        return d.view(n,k), I.view(n*k)
+
+  def chamfer(ref, query):
+    check_data(pos=ref)
+    check_data(pos=query)
+    n = ref.shape[0]
+    nn_d, nn_idx = knn(ref=ref,query=query)
+    chamfer = torch.bmm(nn_d.view(n,1,3), nn_d.view(n,3,1)).mean() 
+    return 
+
+
+
+except ImportError as e:
+    pass
