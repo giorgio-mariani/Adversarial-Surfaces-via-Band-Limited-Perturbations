@@ -1,9 +1,11 @@
 import networkx as nx
 import numpy as np
 import torch
+from torch import LongTensor, Tensor
 import torch_sparse as tsparse
 import torch_scatter as tscatter
 import torch_geometric
+from torch_geometric.data.data import Data
 import tqdm
 
 from . import eigenpairs
@@ -142,16 +144,28 @@ def l2_distance(pos, ppos, faces):
     weight_diff = diff*torch.sqrt(area.view(-1,1))
     L2 = weight_diff.norm(p="fro")
     return L2
-    
+
 #------------------------------------------------------------------------------
-def least_square_meshes(pos, edges):
+def least_square_meshes(pos:Tensor, edges:LongTensor) -> Tensor:
     check_data(pos=pos, edges=edges)
     laplacian = torch_geometric.utils.get_laplacian(edges.t(), normalization="rw")
     n = pos.shape[2]
     tmp = tsparse.spmm(*laplacian, n, n, pos) #Least square Meshes problem 
     return (tmp**2).sum()
 
-
+def write_obj(mesh:Data, file:str):
+    with open(file, 'w') as f:
+        f.write("# OBJ file\n")
+        for v in mesh.pos:
+            v = v.numpy()
+            f.write("v {} {} {}\n".format(v[0], v[1], v[2]))
+            
+        for face in mesh.face.t():
+            f.write("f")
+            face = face.numpy()
+            for i in face:
+                f.write(" %d" % (i + 1))
+            f.write("\n")
 #---------------------------------------
 
 try:
