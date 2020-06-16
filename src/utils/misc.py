@@ -136,13 +136,14 @@ def pos_normals(pos, faces):
 
 
 #-----------------------------------------------------------------------------
-def l2_distance(pos, ppos, faces):
+def l2_distance(pos, ppos, faces, normalize=False):
     check_data(pos=pos, faces=faces)
     check_data(pos=ppos)
     diff = pos - ppos
-    area = pos_areas(pos,faces)
-    weight_diff = diff*torch.sqrt(area.view(-1,1))
+    areas = pos_areas(pos,faces)
+    weight_diff = diff*torch.sqrt(areas.view(-1,1))
     L2 = weight_diff.norm(p="fro")
+    if normalize: L2 = L2/areas.sum().sqrt()
     return L2
 
 #------------------------------------------------------------------------------
@@ -153,14 +154,16 @@ def least_square_meshes(pos:Tensor, edges:LongTensor) -> Tensor:
     tmp = tsparse.spmm(*laplacian, n, n, pos) #Least square Meshes problem 
     return (tmp**2).sum()
 
-def write_obj(mesh:Data, file:str):
+def write_obj(pos:Tensor,faces:Tensor, file:str):
+    check_data(pos=pos, faces=faces)
+    file = file if file.split(".")[-1] == "obj" else file + ".obj" # add suffix if necessary
     with open(file, 'w') as f:
         f.write("# OBJ file\n")
-        for v in mesh.pos:
+        for v in pos:
             v = v.numpy()
             f.write("v {} {} {}\n".format(v[0], v[1], v[2]))
             
-        for face in mesh.face.t():
+        for face in faces:
             f.write("f")
             face = face.numpy()
             for i in face:
