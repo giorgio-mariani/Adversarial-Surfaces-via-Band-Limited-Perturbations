@@ -3,3 +3,6 @@
 **/.ipynb_checkpoints
 model_data/**
 datasets/**
+experiments/**
+src/ChamferDistancePytorch/**
+src/KNN_CUDA
