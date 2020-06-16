@@ -475,12 +475,13 @@ except ImportError as e:
 #------------------------------------------------------------------------------
 def generate_adversarial_example(
     mesh:Data, classifier:Module, target:int,
+    search_iterations:int,
     lowband_perturbation=True, 
     adversarial_loss="carlini_wagner",
     similarity_loss="local_euclidean", 
     regularization="none", **args) -> CWAdversarialExample:
     
-    builder = CWBuilder().set_mesh(mesh.pos,mesh.edge_index.t(), mesh.face.t())
+    builder = CWBuilder(search_iterations).set_mesh(mesh.pos,mesh.edge_index.t(), mesh.face.t())
     builder.set_classifier(classifier).set_target(target)
 
     # set type of perturbation

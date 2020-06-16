@@ -1,9 +1,11 @@
 import os
 from collections import Counter
 
+import numpy as np
 import torch
 from torch_geometric.data import Dataset
 from torch_geometric.data import Data
+from torch_geometric.data import DataLoader
 import tqdm
 
 import adversarial.pgd as pgd
@@ -159,26 +161,19 @@ def train_SHREC14(
 
 
 def evaluate_SHREC14(
-    eval_data:Dataset, 
+    eval_data:Dataset,
     classifier:torch.nn.Module,
     epoch_number=1):
 
     classifier.eval()
-    evaldata_gtruth = [mesh.y.item() for mesh in eval_data]
-
-    confusion = None
+    loader = DataLoader(eval_data, batch_size=1, shuffle=False)
+    
+    confusion = torch.zeros([eval_data.num_classes, eval_data.num_classes])
     for epoch in range(epoch_number):
-        for i in tqdm.trange(len(eval_data)):
-            y = evaldata_gtruth[i]
-            device =eval_data[i].pos.device
-            out = classifier(
-                eval_data[i],
-                [(i.to(device),v.to(device), s) for (i,v,s) in eval_data.downscale_matrices[i]],
-                [e .to(device) for e in eval_data.downscaled_edges[i]])
-
-            if confusion is None:
-                num_classes = out.shape[-1]
-                confusion = torch.zeros([num_classes, num_classes])
+        for data in loader:
+            data = data.to('cuda')
+            y = data.y.cpu().numpy()
+            out = classifier(data.pos)
             
             _, prediction = out.max(dim=-1)
             target = int(y)
