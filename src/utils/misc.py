@@ -1,3 +1,4 @@
+from typing import Tuple
 import networkx as nx
 import numpy as np
 import torch
@@ -154,21 +155,40 @@ def least_square_meshes(pos:Tensor, edges:LongTensor) -> Tensor:
     tmp = tsparse.spmm(*laplacian, n, n, pos) #Least square Meshes problem 
     return (tmp**2).sum()
 
+#--------------------------------------------------------------------------------
 def write_obj(pos:Tensor,faces:Tensor, file:str):
     check_data(pos=pos, faces=faces)
     file = file if file.split(".")[-1] == "obj" else file + ".obj" # add suffix if necessary
+    pos = pos.detach().cpu().clone().numpy();
+    faces = faces.detach().cpu().clone().numpy();
+
     with open(file, 'w') as f:
         f.write("# OBJ file\n")
         for v in pos:
-            v = v.numpy()
             f.write("v {} {} {}\n".format(v[0], v[1], v[2]))
             
         for face in faces:
             f.write("f")
-            face = face.numpy()
             for i in face:
                 f.write(" %d" % (i + 1))
             f.write("\n")
+
+def write_off(pos:Tensor,faces:Tensor, file:str):
+    check_data(pos=pos, faces=faces)
+    n, m = pos.shape[0], faces.shape[0]
+    pos = pos.detach().cpu().clone().numpy();
+    faces = faces.detach().cpu().clone().numpy();
+
+    file = file if file.split(".")[-1] == "off" else file + ".off" # add suffix if necessary
+    with open(file, 'w') as f:
+        f.write("OFF\n")
+        f.write("{} {} 0\n".format(n, m))
+        for v in pos:
+            f.write("{} {} {}\n".format(v[0], v[1], v[2]))
+            
+        for face in faces:
+            f.write("3 {} {} {}\n".format(face[0],face[1],face[2]))
+
 #---------------------------------------
 
 try:

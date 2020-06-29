@@ -101,15 +101,10 @@ class SimplePointNet(nn.Module):
       # Then, P: B x C_D x 1 --> B x C_D (after squeeze)
       # Note: F.max_pool1d(input, kernel_size)
       P = F.max_pool1d(P, P.shape[2]).squeeze(2)
-      #P = #torch.cat( (
-      #      F.max_pool1d(P, P.shape[2]).squeeze(2),
-#            F.avg_pool1d(P, P.shape[2]).squeeze(2) ),
-      #      dim=1)
-      for j, layer in enumerate(self.fc_layers):
-          P = layer(P)
+
+      for j, layer in enumerate(self.fc_layers): P = layer(P)
         
-      if num_in_dim==2:
-        P = P[0]
+      if num_in_dim==2:  P = P[0]
         
       return P
 
@@ -129,7 +124,7 @@ class SimpleTransformer(nn.Module):
         # Setting network dimensions
         self.input_feature_len = input_dimensionality
         self.conv_dims = [self.input_feature_len] + [a for a in convolutional_dimensions]
-        self.fc_dims = [f for f in fc_dimensions] #+ [self.input_feature_len**2]
+        self.fc_dims = [f for f in fc_dimensions] 
 
         ### Convolutional Layers ###
         self.conv_layers = nn.ModuleList([
@@ -163,12 +158,6 @@ class SimpleTransformer(nn.Module):
         SF = x.shape[1] # Size of the features per point
         #assert SF == self.input_feature_len, "Untenable feature len"
 
-        # Unfortunately, I need to handle the current device here
-        # because eye is local and I don't see a better way to 
-        # do this. However, nowhere is a device setting kept.
-        #if x.is_cuda: device = x.get_device()
-        #else:         device = torch.device('cpu')
-
         # Convolutional layers
         for i, layer in enumerate(self.conv_layers): x = layer(x)
         # Max pooling
@@ -183,6 +172,3 @@ class SimpleTransformer(nn.Module):
 
     def move_eye(self, device):
         self.eye = self.eye.to(device)
-
-
- #

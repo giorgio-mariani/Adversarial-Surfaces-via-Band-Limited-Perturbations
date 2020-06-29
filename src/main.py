@@ -93,9 +93,7 @@ train.train(
     classifier=model,
     parameters_file=PARAMS_FILE,
     epoch_number=0)
-import random
 
-import adversarial.pgd as pgd
 '''
 i =  5#random.randint(0, len(traindata)-1)
 x = traindata[i].pos
@@ -121,62 +119,3 @@ if model(x).argmax() == y:
     print("ground-truth: {}".format(model(adex.pos).argmax()))
 else:
     print("Oh no!")'''
-
-
-from os import mkdir,listdir
-from os.path import join, split
-
-dirs = [join(REPO_ROOT,"pgd_tests_l2_lowband"),
-join(REPO_ROOT,"pgd_tests_l2"),
-join(REPO_ROOT,"pgd_tests_sign_lowband"),
-join(REPO_ROOT,"pgd_tests_sign"),
-join(REPO_ROOT,"pgd_tests_l2_lowband-clipnorm"),
-join(REPO_ROOT,"pgd_tests_l2_clipnorm"),
-join(REPO_ROOT,"pgd_tests_sign_lowband-clipnorm"),
-join(REPO_ROOT,"pgd_tests_sign_clipnorm")]
-
-import tqdm
-import torch_sparse as tsparse
-import matplotlib.pyplot as plt
-
-
-def load_adex(filename):
-    obj = np.load(filename, allow_pickle=True)
-    obj = np.reshape(obj, [1])[0]
-    return obj
-
-def meancurvature_distance(directory):
-    c, s, l2 = [],[], []
-    for path in tqdm.tqdm(listdir(directory)):
-        if path.split(".")[-1] == "npy":
-            obj = load_adex(join(directory,path))
-            ppos = torch.tensor(obj["perturbed-positions"])
-            pos = torch.tensor(obj["positions"])
-            n = ppos.shape[0]
-            faces = torch.tensor(obj["faces"])
-            stiff, mass = utils.laplacebeltrami_FEM_v2(pos, faces)
-            stiff_p, mass_p = utils.laplacebeltrami_FEM_v2(ppos, faces)
-
-            tmp = tsparse.spmm(*stiff, n, n, pos)
-            perturbed_tmp = tsparse.spmm(*stiff_p, n, n, ppos)
-                
-            ai, av = mass
-            ai_r, av_r = mass_p
-
-            mcf = tsparse.spmm(ai, torch.reciprocal(av), n, n, tmp)
-            perturbed_mcf = tsparse.spmm(ai_r, torch.reciprocal(av_r), n, n, perturbed_tmp)
-            diff_curvature = mcf.norm(dim=-1,p=2) - perturbed_mcf.norm(dim=-1, p=2)
-            curvature_dist = (av*diff_curvature**2).sum().sqrt().item()
-            c.append(curvature_dist)
-            s.append(obj["success"])
-            l2.append(obj["l2"])
-    return c, s, l2
-
-for directory in dirs:
-    c1, s1, l21 = meancurvature_distance(directory)
-
-    print(directory+": ")
-    print("mean-curvature difference: ", sum(c1)/len(c1))
-    print("success-rate:",sum(s1)/len(s1))
-    print("l2-distance:", sum(l21)/len(l21))
-    print()

@@ -11,9 +11,12 @@ import torch_geometric.io as gio
 import torch_geometric.transforms as transforms
 import tqdm
 
+import utils
 from utils import generate_transform_matrices
 import dataset.downscale as dscale
 from utils.transforms import Move, Rotate
+
+from torch_geometric.data.dataloader import DataLoader
 
 def remesh(Mvert,Mtriv,nvert):
     mesh = om.TriMesh(Mvert,Mtriv)
@@ -124,7 +127,6 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
         return mesh
 
     def process(self):
-        
         datalist_file = os.path.join(self.processed_dir,"tmp.pt")
 
         # Read data into huge `Data` list.
@@ -151,11 +153,9 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             delattr(mesh, "downscaled_edges")
             delattr(mesh, "downscaled_faces")
 
-
         data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
         torch.save((downscale_matrices,downscaled_edges,downscaled_faces), self.processed_paths[1])
-        #os.remove(datalist_file)
 
     def get(self,idx): 
         data = super().get(idx)

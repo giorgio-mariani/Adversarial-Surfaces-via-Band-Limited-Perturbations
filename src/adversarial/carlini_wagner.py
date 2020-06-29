@@ -16,12 +16,33 @@ import utils
 from adversarial.base import AdversarialExample, Builder, LossFunction
 
 #------------------------------------------------------------------------------
-class ValueLogger(object):
-  def __init__(self, value_functions:dict=None, log_interval:int=10):
+class Logger(object):
+  def __init__(self, adv_example:AdversarialExample, log_interval:int=10):
     super().__init__()
-    self.logged_values =  dict()
-    self.value_functions = value_functions if value_functions is not None else dict()
+    self.adv_example = adv_example
     self.log_interval = log_interval
+  
+  def reset(self):raise NotImplementedError()
+  def log(self):raise NotImplementedError()
+
+class EmptyLogger(Logger):
+  def __init__(self, adv_example:AdversarialExample, log_interval:int=10):
+    super().__init__(adv_example=adv_example, log_interval=log_interval)
+  def reset(self):return
+  def log(self):return 
+
+class ValueLogger(Logger):
+  def __init__(self, 
+    adv_example:AdversarialExample, 
+    value_functions:dict={
+      "adversarial":lambda x: x.adversarial_loss().item(),
+      "similarity": lambda x: x.similarity_loss().item(),
+      "regularization":lambda x: x.regularization_loss().item()},
+    log_interval:int=10):
+
+    super().__init__(adv_example=adv_example, log_interval=log_interval)
+    self.logged_values =  dict()
+    self.value_functions = value_functions
 
     #initialize logging metrics
     for n, f in self.value_functions.items():
@@ -34,10 +55,10 @@ class ValueLogger(object):
     for func, values in self.logged_values.items():
       values.clear()
 
-  def log(self, adv_example, iteration):
+  def log(self, iteration:int):
     if self.log_interval != 0 and iteration % self.log_interval == 0:
       for n,f in self.value_functions.items():
-        v = f(adv_example)
+        v = f(self.adv_example)
         self.logged_values[n].append(v)
 
   def show(self):
@@ -60,8 +81,7 @@ class CWAdversarialExample(AdversarialExample):
     regularization_coeff:float,
     minimization_iterations:int,
     learning_rate:float,    
-    additional_model_args:dict,
-    log_data:bool):
+    additional_model_args:dict):
 
     super().__init__(
         pos=pos, edges=edges, faces=faces,
@@ -75,13 +95,7 @@ class CWAdversarialExample(AdversarialExample):
     self.minimization_iterations = minimization_iterations
     self.learning_rate = learning_rate
     self.model_args = additional_model_args
-    if log_data:
-      tmp = {"adversarial":lambda x: x.adversarial_loss().item(),
-       "similarity": lambda x: x.similarity_loss().item(),
-       "regularization":lambda x: x.regularization_loss().item()}
-      self.logger = ValueLogger(tmp)
-    else:
-      self.logger = ValueLogger()
+
 
     # for untargeted-attacks use second most probable class    
     if target is None:
@@ -128,7 +142,7 @@ class CWAdversarialExample(AdversarialExample):
       adversarial_loss = self.adversarial_coeff*self.adversarial_loss()
       regularization_loss = self.regularization_coeff*self.regularization_loss()
       loss = adversarial_loss + similarity_loss + regularization_loss
-      self.logger.log(self, i) #log results
+      self.logger.log(i) #log results
 
       # cutoff procedure to improve performance
       is_successful = adversarial_loss <= 0
@@ -157,17 +171,15 @@ class CWBuilder(Builder):
   MIN_IT = "minimization_iterations"
   LEARN_RATE = "learning_rate"
   MODEL_ARGS = "additional_model_args"
-  LOG ="log_data"
 
   def __init__(self, search_iterations=1):
     super().__init__()
     self.search_iterations = search_iterations
-    self.logger = None
-
     self._perturbation_factory = LowbandPerturbation
     self._adversarial_loss_factory = AdversarialLoss
     self._similarity_loss_factory = L2Similarity
-    self._regularizer_factory = None
+    self._regularizer_factory = EmptyRegularizer
+    self._logger_factory = EmptyLogger
 
   def set_perturbation(self, perturbation_factory):
     self._perturbation_factory = perturbation_factory
@@ -184,6 +196,10 @@ class CWBuilder(Builder):
   def set_regularization_loss(self, regularizer_factory):
     self._regularizer_factory = regularizer_factory
     return self
+  
+  def set_logger(self, logger_factory):
+    self._logger_factory = logger_factory
+    return self
 
   def build(self, **args:dict) -> AdversarialExample:
     usetqdm = args.get(CWBuilder.USETQDM, False)
@@ -192,7 +208,6 @@ class CWBuilder(Builder):
     self.adex_data[CWBuilder.REG_COEFF] = args.get(CWBuilder.REG_COEFF, 1)
     self.adex_data[CWBuilder.LEARN_RATE] = args.get(CWBuilder.LEARN_RATE, 1e-3)
     self.adex_data[CWBuilder.MODEL_ARGS] = args.get(CWBuilder.MODEL_ARGS, dict())
-    self.adex_data[CWBuilder.LOG] = args.get(CWBuilder.LOG, False)
     
     # exponential search variables
     start_adv_coeff = self.adex_data[CWBuilder.ADV_COEFF]
@@ -215,8 +230,8 @@ class CWBuilder(Builder):
       adex.adversarial_loss = self._adversarial_loss_factory(adex)
       adex.perturbation = self._perturbation_factory(adex)
       adex.similarity_loss = self._similarity_loss_factory(adex)
-      if self._regularizer_factory is not None:
-        adex.regularization_loss = self._regularizer_factory(adex)
+      adex.regularization_loss = self._regularizer_factory(adex)
+      adex.logger = self._logger_factory(adex)
       adex.compute(usetqdm=usetqdm)
 
       # get perturbation
@@ -338,6 +353,12 @@ class LogSoftmaxAdversarialLoss(LossFunction):
       return loss
 
 # regularizers ----------------------------------------------------------------
+class EmptyRegularizer(LossFunction):
+    def __init__(self, adv_example:AdversarialExample):
+        super().__init__(adv_example)
+        self._zero = torch.zeros(1,dtype=adv_example.dtype_float,device=adv_example.device)
+    def __call__(self): return self._zero
+
 class CentroidRegularizer(LossFunction):
     def __init__(self, adv_example:AdversarialExample):
         super().__init__(adv_example)
@@ -392,6 +413,37 @@ try:
         diff = query.view(n,1,3) - ref[0, I.view(-1),:].view(n,k,3) #shape [n,k,3]
         #print((d.view(-1) - diff.norm(p=2,dim=-1).view(-1)).abs().max()) #NOTE check if correct
         return diff.view(n,k,3), I
+
+  class RAOChamferSimilarity(LossFunction):
+      def __init__(self, adv_example:AdversarialExample):
+          super().__init__(adv_example)
+          self.knn = KNN(1, transpose_mode=True)
+
+      def __call__(self):
+        pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
+        n, k = self.adv_example.vertex_count, 1
+        
+        diff, _ = _grad_distances(ref=pos,query=ppos,n=n,k=1, knn=self.knn)
+        term = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).mean() 
+        return term
+
+  class RAOSmoothSimilarity(LossFunction):
+      def __init__(self, adv_example:AdversarialExample, K:int, wp_threshold_coeff:float=1):
+          super().__init__(adv_example)
+          self.K = K
+          self.knn = KNN(K, transpose_mode=True)
+          self.wp_threshold_coeff = wp_threshold_coeff
+
+      def __call__(self):
+        pos, ppos = self.adv_example.pos, self.adv_example.perturbed_pos
+        n, k = self.adv_example.vertex_count, self.K
+        
+        diff, _ = _grad_distances(ref=pos, query=ppos,n=n, k=k, knn=self.knn)
+        dists = torch.bmm(diff.view(n*k,1,3), diff.view(n*k,3,1)).view(n,k).mean(dim=1)
+        wp_mask = dists >= self.wp_threshold_coeff*dists.std()
+        dists_masked = dists*wp_mask
+        term = dists_masked.mean()
+        return term
 
   class ChamferSimilarity(LossFunction):
       def __init__(self, adv_example:AdversarialExample):
@@ -511,6 +563,8 @@ def generate_adversarial_example(
     if regularization != "none":
       if regularization == "centroid":
         builder.set_regularization_loss(regularizer_factory=CentroidRegularizer)
+      if regularization == "chamfer":
+        builder.set_regularization_loss(regularizer_factory=ChamferSimilarity)
       else: raise ValueError()
 
     return builder.build(**args)
