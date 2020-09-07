@@ -194,6 +194,13 @@ def write_off(pos:Tensor,faces:Tensor, file:str):
 try:
   from knn_cuda import KNN
 
+  def knn_grad(ref, query, n, k) -> torch.Tensor: #NOTE output tensor shape [n,k,3]
+      ref = ref.view(1,n,3)
+      query = query.view(1,n,3)
+      d, I = KNN(ref=ref, query=query)
+      diff = query.view(n,1,3) - ref[0, I.view(-1),:].view(n,k,3) #shape [n,k,3]
+      return diff.view(n,k,3), I
+
   def knn(ref, query, n, k) -> torch.Tensor:
         ref = ref.view(1,n,3)
         query = query.view(1,n,3)
@@ -203,12 +210,14 @@ try:
   def chamfer(ref, query):
     check_data(pos=ref)
     check_data(pos=query)
+
     n = ref.shape[0]
-    nn_d, nn_idx = knn(ref=ref,query=query)
-    chamfer = torch.bmm(nn_d.view(n,1,3), nn_d.view(n,3,1)).mean() 
-    return 
+    nn_d1, nn_idx1 = knn_grad(ref=ref,query=query,n=n,k=1)
+    nn_d2, nn_idx2 = knn_grad(ref=query,query=ref,n=n,k=1)
 
-
+    chamfer1 = torch.bmm(nn_d1.view(n,1,3), nn_d1.view(n,3,1)).mean()
+    chamfer2 = torch.bmm(nn_d2.view(n,1,3), nn_d2.view(n,3,1)).mean()
+    return chamfer1+chamfer1
 
 except ImportError as e:
     pass

@@ -99,7 +99,7 @@ def generate_adversarial_example(
     transforms.append(lambda x:AlphaTransform(x,alpha=alpha))
 
     if lowband_transform != "none":
-        eigs_num = args["eigs_num"]
+        eigs_num = args[LowBandTransform.EIGS_NUMBER]
         if lowband_transform =="static":
             transforms.append(lambda x: LowBandTransform(x,eigs_num=eigs_num))
         elif lowband_transform =="dynamic":
@@ -107,7 +107,7 @@ def generate_adversarial_example(
         else: raise ValueError()
 
     if clip_transform != "none":
-        epsilon = args["epsilon"]
+        epsilon = args[ClipTransform.EPSILON]
         if clip_transform == "pointwise":
             transforms.append(lambda x:ClipTransform(x,epsilon=epsilon))
         elif clip_transform == "norm":
@@ -150,6 +150,7 @@ class L2Transform(Transform):
 
 
 class ClipTransform(Transform):
+    EPSILON="epsilon"
     def __init__(self, adv_example:PGDAdversarialExample, epsilon:float):
         super().__init__(adv_example)
         self.epsilon = torch.tensor(epsilon, device=self.adv_example.device, dtype=self.adv_example.dtype_float)
@@ -169,6 +170,7 @@ class ClipNormsTransform(ClipTransform):
         return x
 
 class LowBandTransform(Transform):
+    EIGS_NUMBER="eigs_num"
     def __init__(self, adv_example:PGDAdversarialExample, eigs_num:int=50):
         super().__init__(adv_example)
         self.eigs_num = eigs_num

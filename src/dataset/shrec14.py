@@ -41,12 +41,9 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
         train:bool=True, test:bool=True,
         transform_data:bool=True,
         transform=None,
-        synth=False,
-        spectral=False,
         nvert=0):
         self.url = 'http://www.cs.cf.ac.uk/shaperetrieval/shrec14/'
         
-        self.spectral=spectral
         self.nvert = nvert
         def to_device(mesh:torch_geometric.data.Data):
             mesh.pos = mesh.pos.to(device)
@@ -136,6 +133,7 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             data_list = []
         
         p = Pool(40)
+        print(len(data_list))
         for s in range(len(data_list),300,40):
             print('Shapes from %d to %d' % (s, s+(len(self.raw_paths[s:s+40]))-1) )
             data_list = data_list + p.map(Shrec14Dataset.proc,enumerate(self.raw_paths[s:s+40],start=s))
@@ -156,6 +154,7 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
         data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
         torch.save((downscale_matrices,downscaled_edges,downscaled_faces), self.processed_paths[1])
+        os.remove(datalist_file)
 
     def get(self,idx): 
         data = super().get(idx)
@@ -166,17 +165,13 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
             face2edge = transforms.FaceToEdge(remove_faces=False)
             face2edge(data)
         
-        if self.spectral:
-            data.eigvals, data.eigvecs = utils.eigenpairs(data.pos, data.face.t(), K=50, double_precision=False)
-            data.stiff, data.area = utils.laplacebeltrami_FEM_v2(data.pos, data.face.t())
         data.downscale_matrices = self.downscale_matrices[idx:idx+1]
         data.downscaled_edges = self.downscaled_edges[idx:idx+1]
         data.downscaled_faces = self.downscaled_faces[idx:idx+1]
             
-        data.oripos = data.pos.clone()     
+        data.oripos = data.pos.clone()
         return data
     
-
 
 def _scipy_to_torch_sparse(scp_matrix):
     values = scp_matrix.data
@@ -185,93 +180,3 @@ def _scipy_to_torch_sparse(scp_matrix):
     v = torch.FloatTensor(values)
     shape = scp_matrix.shape
     return (i,v, torch.Size(shape))
-
-
-class Shrec14Dataset_retrivial(Shrec14Dataset):
-    def __init__(self, 
-        root:str, 
-        device:torch.device=torch.device("cpu"),
-        train:bool=True, test:bool=True,
-        transform_data:bool=True,
-        synth=False,
-        spectral=False):
-        self.url = 'http://www.cs.cf.ac.uk/shaperetrieval/shrec14/'
-        
-        self.spectral=spectral
-        
-        def to_device(mesh:torch_geometric.data.Data):
-            mesh.pos = mesh.pos.to(device)
-            mesh.edge_index = mesh.edge_index.to(device)
-            mesh.face = mesh.face.to(device)
-            mesh.y = mesh.y.to(device)
-            mesh.subject = mesh.subject.to(device)
-            return mesh
-
-        
-        transform = None
-        if transform_data:            
-            # rotate and move
-            if synth:
-                print('synth')
-                transform = transforms.Compose([
-                    Rotate(dims=[1]), 
-                    Move(mean=[0,0,0], std=[0.02,0.06,0.02]),
-                    to_device])
-            else:
-                transform = transforms.Compose([
-                    Rotate(dims=[0,1,2]), 
-                    Move(mean=[0,0,0], std=[0.05,0.05,0.05]),
-                    to_device])
-
-            # center each mesh into its centroid
-            pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
-            super().__init__(root=root,device=device, train=True, test=True, transform_data=transform_data, transform=transform)
-        else:
-            super().__init__(root=root,device=device, train=True, test=True, transform_data=transform_data, transform=transform)
-
-#         self.data.y = self.data.subject
-#         print(type(self.data.subject))
-#         print(self.get(0))
-        n_poses = 10
-        n_subj = 40
-        if synth:
-            n_poses = 20
-            n_subj = 15
-        t_size = n_poses//5    
-        nshapes = n_poses*n_subj;
-        
-        all_data = []
-        for i in range(nshapes):
-            data = super().get(i)
-            data.y =  data.subject
-            data.downscale_matrices = self.downscale_matrices[i]
-            data.downscaled_edges =   self.downscaled_edges[i]
-            data.downscaled_faces =   self.downscaled_faces[i]
-            all_data.append(data)
-            
- 
-           
-        np.random.seed(0)
-        idxs = torch.from_numpy(np.asarray([np.random.permutation(n_poses) for i in range(n_subj)]))
-        idxs = np.asarray(idxs + (n_poses*np.arange(n_subj)[:,None]),'int32')
- 
-        if train and not test:
-            self.data, self.slices = self.collate([all_data[i] for i in idxs[:,t_size:].flatten()])
-            
-        elif not train and test:
-            self.data, self.slices = self.collate([all_data[i] for i in idxs[:,:t_size].flatten()])
-            
-        
-    def get(self,idx): 
-        print('new')
-        data = super().get(idx)
-        #data.pos,data.face = remesh(data.pos,data.face.t(),2000)
-        
-        #if self.spectral:
-        #    data.eigvals, data.eigvecs = utils.eigenpairs(data.pos, data.face.t(), K=50, double_precision=False)
-        #    data.stiff, data.area = utils.laplacebeltrami_FEM_v2(data.pos, data.face.t())
-            #face2edge = transforms.FaceToEdge(remove_faces=False)
-            #face2edge(data)
-        data.oripos = data.pos.clone()     
-        return data
-            

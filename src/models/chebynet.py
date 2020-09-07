@@ -7,8 +7,6 @@ import torch.nn.functional as func
 import torch_geometric
 import torch_sparse
 
-from .pni import PNIChebConv,PNILinear
-
 class ChebnetClassifier(torch.nn.Module):
     def __init__(
         self,
@@ -17,7 +15,7 @@ class ChebnetClassifier(torch.nn.Module):
         D_t:List[torch.sparse.FloatTensor],
         num_classes:int, 
         parameters_file=None,
-        K=6, PNI=False):
+        K=6):
         """
         arguments:
          * param_conv_layers: number of output features for the all the convolutional
@@ -33,13 +31,8 @@ class ChebnetClassifier(torch.nn.Module):
          # edge_indices is a list of tensor of shape [2, num_edges (at scale i)]
         self.downscale_matrices = [D for D in D_t]
 
-        # add random noise to weights (if wanted)
-        if PNI :
-            chebconv = PNIChebConv
-            linear = PNILinear
-        else:
-            chebconv = torch_geometric.nn.ChebConv
-            linear = torch.nn.Linear
+        chebconv = torch_geometric.nn.ChebConv
+        linear = torch.nn.Linear
 
         # convolutional layers
         param_conv_layers.insert(0,3) # add the first input features
@@ -95,7 +88,7 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
         num_classes:int,
         num_hidden:int=1024,
         parameters_file=None,
-        K=6, PNI=False):
+        K=6):
         """ Initialize class fields.
 
         Args:
@@ -110,12 +103,8 @@ class ChebnetClassifier_SHREC14(torch.nn.Module):
         super().__init__()
     
         # add random noise to weights (if wanted)
-        if PNI :
-            chebconv = PNIChebConv
-            linear = PNILinear
-        else:
-            chebconv = torch_geometric.nn.ChebConv
-            linear = torch.nn.Linear
+        chebconv = torch_geometric.nn.ChebConv
+        linear = torch.nn.Linear
 
         # convolutional layers
         nums_conv_units.insert(0,3) # add the first input features

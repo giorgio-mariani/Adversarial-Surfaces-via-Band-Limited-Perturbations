@@ -43,6 +43,7 @@ class ValueLogger(Logger):
     super().__init__(adv_example=adv_example, log_interval=log_interval)
     self.logged_values =  dict()
     self.value_functions = value_functions
+    self.iteration = 0;
 
     #initialize logging metrics
     for n, f in self.value_functions.items():
@@ -52,11 +53,13 @@ class ValueLogger(Logger):
       self.value_functions[n] = f
 
   def reset(self):
+    self.iteration = 0;
     for func, values in self.logged_values.items():
       values.clear()
 
-  def log(self, iteration:int):
-    if self.log_interval != 0 and iteration % self.log_interval == 0:
+  def log(self):
+    self.iteration +=1
+    if self.log_interval != 0 and self.iteration % self.log_interval == 0:
       for n,f in self.value_functions.items():
         v = f(self.adv_example)
         self.logged_values[n].append(v)
@@ -142,7 +145,7 @@ class CWAdversarialExample(AdversarialExample):
       adversarial_loss = self.adversarial_coeff*self.adversarial_loss()
       regularization_loss = self.regularization_coeff*self.regularization_loss()
       loss = adversarial_loss + similarity_loss + regularization_loss
-      self.logger.log(i) #log results
+      self.logger.log() #log results
 
       # cutoff procedure to improve performance
       is_successful = adversarial_loss <= 0
@@ -302,6 +305,7 @@ class Perturbation(object):
     return self._perturbed_pos_cache
     
 class LowbandPerturbation(Perturbation):
+  EIGS_NUMBER = "eigs_num"
   def __init__(self, adv_example, eigs_num=50):
     self._eigs_num = eigs_num
     self._eigvals, self._eigvecs = utils.eigenpairs(
@@ -537,7 +541,7 @@ def generate_adversarial_example(
 
     # set type of perturbation
     if lowband_perturbation:
-      eigs_num = args["eigs_num"]
+      eigs_num = args[LowbandPerturbation.EIGS_NUMBER]
       builder.set_perturbation(perturbation_factory=lambda x:LowbandPerturbation(x,eigs_num=eigs_num))
     else:
       builder.set_perturbation(perturbation_factory=Perturbation)
@@ -548,7 +552,7 @@ def generate_adversarial_example(
     elif adversarial_loss == "log_softmax":
       builder.set_adversarial_loss(adv_loss_factory=LogSoftmaxAdversarialLoss)
     else:
-      raise ValueError()
+      raise ValueError("Invalid adversarial loss!")
 
     # set type of similarity loss
     if similarity_loss == "local_euclidean":
@@ -557,15 +561,15 @@ def generate_adversarial_example(
       builder.set_similarity_loss(sim_loss_factory=L2Similarity)
     elif similarity_loss == "GeoA3":
       builder.set_similarity_loss(sim_loss_factory=GeoA3Similarity)
-    else: raise ValueError()
+    else: raise ValueError("Invalid similarity loss!")
 
     # set type of regularizer
     if regularization != "none":
       if regularization == "centroid":
         builder.set_regularization_loss(regularizer_factory=CentroidRegularizer)
-      if regularization == "chamfer":
+      elif regularization == "chamfer":
         builder.set_regularization_loss(regularizer_factory=ChamferSimilarity)
-      else: raise ValueError()
+      else: raise ValueError("Invalid regularization term!")
 
     return builder.build(**args)
  

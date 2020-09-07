@@ -5,7 +5,7 @@ import numpy as np
 
 import utils
 
-class DownscaleDelegate(object):
+class Downscaler(object):
     def __init__(self, dataset, ds_model_index=0):
         self.dataset = dataset
         self.downscaled_cache_file = os.path.join(dataset.processed_dir, "ds.npy")

@@ -37,7 +37,7 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             super().__init__(root=root, transform=to_device)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.ds_delegate = dscale.DownscaleDelegate(self)
+        self.downscaler = dscale.Downscaler(self)
 
         if train and not test:
             self.data, self.slices = self.collate([self.get(i) for i in range(20, 100)])
@@ -72,51 +72,12 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
         torch.save( (data, slices), self.processed_paths[0])
 
     @property
-    def downscale_matrices(self): return self.ds_delegate.downscale_matrices
+    def downscale_matrices(self): return self.downscaler.downscale_matrices
 
     @property
-    def downscaled_edges(self): return self.ds_delegate.downscaled_edges
+    def downscaled_edges(self): return self.downscaler.downscaled_edges
 
     @property
-    def downscaled_faces(self): return self.ds_delegate.downscaled_faces
-
-
-class FaustAugmented(FaustDataset):
-  def __init__(self,
-    root:str,
-    device:torch.device = torch.device("cpu"),
-    train:bool=True, test:bool=True,
-    transform_data:bool=True):
-    super().__init__(root=root, 
-        device=device, 
-        transform_data=transform_data, 
-        train=True, test=True)
-    data_aug, slices_aug = torch.load(self.processed_paths[1])
-    data, slices = self.data, self.slices
-    
-    keys = data.keys
-    key_cat_dim = {"pos":0, "edge_index":1, "y":0,"face":1}
-    for k in keys:
-      data_k = getattr(data, k)
-      data_k_aug = getattr(data_aug, k)
-      slice_k = slices[k]
-      slice_k_aug =  slices_aug[k]
-
-      tmp_data = torch.cat([data_k, data_k_aug], dim=key_cat_dim[k])
-      tmp_slices = torch.cat([slice_k[:-1], slice_k[-1] + slice_k_aug[:]], dim=0)
-
-      self.data[k] = tmp_data
-      self.slices[k] = tmp_slices
-
-    if train and not test:
-        I = list(range(20,80))+ list(range(120,200))+ list(range(212,260))
-        self.data, self.slices = self.collate([self.get(i) for i in I])
-    elif not train and test:
-        I = list(range(0,20))+ list(range(100,120))+ list(range(200,212))
-        self.data, self.slices = self.collate([self.get(i) for i in I])
-
-  @property
-  def processed_file_names(self):
-      return ['data.pt','data_amass.pt']
+    def downscaled_faces(self): return self.downscaler.downscaled_faces
 
 
