@@ -1,5 +1,6 @@
 # Adversarial-Examples-on-Meshes
-This repository contains the code for my Master's Thesis, which consists in developing a way to generalize adversarial perturbations on meshes.
+This repository contains the majority of the code for [Generating Adversarial Surfaces via Band-Limited Perturbations
+](https://diglib.eg.org/handle/10.1111/cgf14083).
 
 ## Dependencies
 ### PyTorch 1.4
