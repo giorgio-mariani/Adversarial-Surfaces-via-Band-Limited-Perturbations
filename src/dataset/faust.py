@@ -23,6 +23,8 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             mesh.y = mesh.y.to(device)
             return mesh
 
+         # center each mesh into its centroid
+        pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
         if transform_data:
             # rotate and move
             transform = transforms.Compose([
@@ -30,14 +32,13 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
                 Rotate(dims=[0,1,2]), 
                 to_device])
 
-            # center each mesh into its centroid
-            pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
             super().__init__(root=root, transform=transform, pre_transform=pre_transform)
         else:
-            super().__init__(root=root, transform=to_device)
+            super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
-        self.downscaler = dscale.Downscaler(self)
+        self.downscaler = dscale.Downscaler(
+            filename=os.path.join(self.processed_dir,"ds"), mesh=self.get(0), factor=4)
 
         if train and not test:
             self.data, self.slices = self.collate([self.get(i) for i in range(20, 100)])
@@ -65,7 +66,10 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
             mesh = torch_geometric.io.read_ply(path)
             mesh.y = i%10 # set the mesh class (note that FAUST models are ordered by class)
             f2e(mesh)
+            if self.pre_filter is not None and not self.pre_filter(mesh):continue
+            if self.pre_transform is not None: mesh = self.pre_transform(mesh)
             data_list.append(mesh)
+
         data, slices = self.collate(data_list)
         if not os.path.exists(self.processed_dir):
             os.mkdir(path)

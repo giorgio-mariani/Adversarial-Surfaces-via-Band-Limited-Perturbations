@@ -73,8 +73,10 @@ import adversarial.pgd as pgd
 import dataset
 import utils
 
-REPO_ROOT = os.path.join(os.path.dirname(os.path.realpath('__file__')),"..")
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath('__file__')),".."))
 FAUST = os.path.join(REPO_ROOT,"datasets/faust")
+SHREC14 = os.path.join(REPO_ROOT,"datasets/shrec14")
+SMAL = os.path.join(REPO_ROOT,"datasets/smal")
 PARAMS_FILE = os.path.join(REPO_ROOT, "model_data/data.pt")
 
 traindata = dataset.FaustDataset(FAUST, train=True, test=False, transform_data=True)
@@ -86,6 +88,9 @@ model = models.ChebnetClassifier(
     E_t = traindata.downscaled_edges,
     num_classes = traindata.num_classes,
     parameters_file=PARAMS_FILE)
+
+model = model.to(torch.device("cpu"))
+
 
 #train network
 train.train(

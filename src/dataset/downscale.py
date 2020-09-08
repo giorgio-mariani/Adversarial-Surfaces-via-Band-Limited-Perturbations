@@ -6,11 +6,12 @@ import numpy as np
 import utils
 
 class Downscaler(object):
-    def __init__(self, dataset, ds_model_index=0):
-        self.dataset = dataset
-        self.downscaled_cache_file = os.path.join(dataset.processed_dir, "ds.npy")
-        self._i = ds_model_index
+    def __init__(self, filename, mesh, factor=4):
+        if filename[-4:] != ".npy":filename+=".npy"
+        self.downscaled_cache_file = filename
+        self._mesh = mesh
         self._E, self._F, self._D = None, None, None
+        self.factor = factor
 
     @property
     def _ds_cached(self):
@@ -28,10 +29,10 @@ class Downscaler(object):
             if self._ds_cached: #data is cached, but not loaded (for example after a restart)
                 E,F,D = np.load(self.downscaled_cache_file, allow_pickle=True) #load data
             else: # data is neither cached nor loaded
-                data = self.dataset[self._i]
+                data = self._mesh
                 v, f = data.pos.numpy(), data.face.t().numpy()
-                _,F,E,D = utils.generate_transform_matrices(v, f, [4,4,4])
-                np.save(self.downscaled_cache_file, (E,F,D) )
+                _,F,E,D = utils.generate_transform_matrices(v, f, [self.factor]*3)
+                np.save(self.downscaled_cache_file, (E,F,D))
                 
             # assign data to respective fields
             F_t = [torch.tensor(f).t() for f in F]

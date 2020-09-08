@@ -27,6 +27,10 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             mesh.y = mesh.y.to(device)
             return mesh
 
+
+        # center each mesh into its centroid
+        pre_transform = transforms.Center()
+
         if transform_data:
             # rotate and move
             transform = transforms.Compose([
@@ -34,14 +38,14 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
                 Rotate(dims=[0,1,2]), 
                 to_device])
 
-            # center each mesh into its centroid
-            pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
             super().__init__(root=root, transform=transform, pre_transform=pre_transform)
         else:
             super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
 
-        self.downscaler = dscale.Downscaler(self)
         self.data, self.slices = torch.load(self.processed_paths[0])
+        self.downscaler = dscale.Downscaler(
+            filename=join(self.processed_dir,"ds"), mesh=self.get(0), factor=2)
+
 
         if train and not test:
             self.data, self.slices = self.collate([self.get(i) for i in range(len(self)) if self.get(i).pose < 16])
@@ -74,6 +78,8 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
             mesh.model = int(model_str[5:])
             mesh.pose = int(pose_str[4:])
             mesh.y = self.categories.index(category)
+            if self.pre_filter is not None and not self.pre_filter(mesh) : continue
+            if self.pre_transform is not None: mesh = self.pre_transform(mesh)
             data_list.append(mesh)
         data, slices = self.collate(data_list)
         torch.save( (data, slices), self.processed_paths[0])
