@@ -1,4 +1,4 @@
-# Adversarial-Examples-on-Meshes
+# Adversarial-Surfaces-via-Band-Limited-Perturbations
 This repository contains the majority of the code for [Generating Adversarial Surfaces via Band-Limited Perturbations
 ](https://diglib.eg.org/handle/10.1111/cgf14083).
 
