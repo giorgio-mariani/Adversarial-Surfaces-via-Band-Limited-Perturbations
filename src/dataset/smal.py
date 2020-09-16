@@ -33,7 +33,7 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
                 Rotate(dims=[0,1,2]), 
                 ToDevice(device)])
         else:
-            transforms=ToDevice(device)
+            transform=ToDevice(device)
 
         super().__init__(root=root, transform=transform, pre_transform=pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
