@@ -8,7 +8,7 @@ import torch_geometric.data
 import torch_geometric.transforms as transforms
 
 import dataset.downscale as dscale
-from utils.transforms import Move, Rotate
+from utils.transforms import Move, Rotate, ToDevice
 
 
 class SmalDataset(torch_geometric.data.InMemoryDataset):
@@ -22,26 +22,20 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
         self.url = 'https://drive.google.com/file/d/1dp4sMvZ8cmIIITE-qj6zYpZb0-v-4Kgf/view?usp=sharing'
         self.categories = ["big_cats","cows","dogs","hippos","horses"]
 
-        def to_device(mesh:torch_geometric.data.Data):
-            mesh.pos = mesh.pos.to(device)
-            mesh.y = mesh.y.to(device)
-            return mesh
-
-
         # center each mesh into its centroid
         pre_transform = transforms.Center()
 
+        # transform
         if transform_data:
             # rotate and move
             transform = transforms.Compose([
                 Move(mean=[0,0,0], std=[0.05,0.05,0.05]), 
                 Rotate(dims=[0,1,2]), 
-                to_device])
-
-            super().__init__(root=root, transform=transform, pre_transform=pre_transform)
+                ToDevice(device)])
         else:
-            super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
+            transforms=ToDevice(device)
 
+        super().__init__(root=root, transform=transform, pre_transform=pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.downscaler = dscale.Downscaler(
             filename=join(self.processed_dir,"ds"), mesh=self.get(0), factor=2)

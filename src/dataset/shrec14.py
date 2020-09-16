@@ -14,7 +14,7 @@ import tqdm
 import utils
 from utils import generate_transform_matrices
 import dataset.downscale as dscale
-from utils.transforms import Move, Rotate
+from utils.transforms import Move, Rotate, ToDevice
 
 from torch_geometric.data.dataloader import DataLoader
 
@@ -23,18 +23,10 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
         root:str, 
         device:torch.device=torch.device("cpu"),
         train:bool=True, test:bool=True,
-        transform_data:bool=True,
-        transform=None):
+        transform_data:bool=True):
         self.url = 'http://www.cs.cf.ac.uk/shaperetrieval/shrec14/'
-        
-        def to_device(mesh:torch_geometric.data.Data):
-            mesh.pos = mesh.pos.to(device)
-            mesh.edge_index = mesh.edge_index.to(device)
-            mesh.face = mesh.face.to(device)
-            mesh.y = mesh.y.to(device)
-            return mesh
 
-        if transform_data and transform is None:
+        if transform_data:
             # rotate and move
             transform = transforms.Compose([  
                 transforms.Center(),
@@ -42,11 +34,12 @@ class Shrec14Dataset(torch_geometric.data.InMemoryDataset):
                 Rotate(dims=[1]), 
                 Move(mean=[0,0,0], std=[0.05,0.05,0.05]), 
                 transforms.RandomTranslate(0.01),
-                to_device])
+                ToDevice(device)])
+        else:
+            transform = ToDevice(device)
 
         # center each mesh into its centroid
-        pre_transform = transforms.Center()
-        super().__init__(root=root, transform=transform, pre_transform=pre_transform)
+        super().__init__(root=root, transform=transform, pre_transform=transforms.Center())
 
         self.data, self.slices = torch.load(self.processed_paths[0])
 

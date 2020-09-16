@@ -9,7 +9,7 @@ import torch_geometric.transforms as transforms
 import tqdm
 
 import dataset.downscale as dscale
-from utils.transforms import Move, Rotate
+from utils.transforms import Move, Rotate, ToDevice
 
 class FaustDataset(torch_geometric.data.InMemoryDataset):
     def __init__(self, 
@@ -18,24 +18,18 @@ class FaustDataset(torch_geometric.data.InMemoryDataset):
         train:bool=True, test:bool=True,
         transform_data:bool=True):
         self.url = 'http://faust.is.tue.mpg.de/'
-        def to_device(mesh:torch_geometric.data.Data):
-            mesh.pos = mesh.pos.to(device)
-            mesh.y = mesh.y.to(device)
-            return mesh
 
          # center each mesh into its centroid
-        pre_transform = Move(mean=[0,0,0], std=[0.0,0.0,0.0])
         if transform_data:
             # rotate and move
             transform = transforms.Compose([
                 Move(mean=[0,0,0], std=[0.05,0.05,0.05]), 
-                Rotate(dims=[0,1,2]), 
-                to_device])
-
-            super().__init__(root=root, transform=transform, pre_transform=pre_transform)
+                Rotate(dims=[0,1,2]),
+                ToDevice(device)])
         else:
-            super().__init__(root=root, transform=to_device, pre_transform=pre_transform)
+            transform = ToDevice(device)
 
+        super().__init__(root=root, transform=transform, pre_transform=transforms.Center())
         self.data, self.slices = torch.load(self.processed_paths[0])
         self.downscaler = dscale.Downscaler(
             filename=os.path.join(self.processed_dir,"ds"), mesh=self.get(0), factor=4)

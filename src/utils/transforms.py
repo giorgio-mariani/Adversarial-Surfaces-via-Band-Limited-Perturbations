@@ -70,3 +70,15 @@ class Move(object):
 
         mesh.pos = offset + (pos - centroid)
         return mesh
+
+class ToDevice(object):
+    def __init__(self, device:torch.device):
+        super().__init__()
+        self.argument = device
+    
+    def __call__(self, mesh:Data):
+        mesh.pos = mesh.pos.to(self.argument)
+        mesh.face = mesh.face.to(self.argument)
+        mesh.edge_index = mesh.edge_index.to(self.argument)
+        mesh.y = mesh.y.to(self.argument)
+        return mesh

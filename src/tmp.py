@@ -79,6 +79,32 @@ SHREC14 = os.path.join(REPO_ROOT,"datasets/shrec14")
 SMAL = os.path.join(REPO_ROOT,"datasets/smal")
 PARAMS_FILE = os.path.join(REPO_ROOT, "model_data/data.pt")
 
+
+
+
+DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+SRC_DIR = os.path.join(REPO_ROOT,"src")
+SHREC14 =  os.path.join(REPO_ROOT,"datasets/shrec14")
+traindata = dataset.Shrec14Dataset(SHREC14,device=DEVICE, train=True, test=False)
+testdata = dataset.Shrec14Dataset(SHREC14, device=DEVICE, train=False, test=True, transform_data=False)
+from torch import nn
+from models.pointnet import SimplePointNet 
+
+#autoencoder
+LATENT_SPACE = 128
+NUM_POINTS = 7000
+ENC = SimplePointNet(
+    latent_dimensionality=LATENT_SPACE*2,
+    convolutional_output_dim=512,
+    conv_layer_sizes=[32, 128, 256],
+    fc_layer_sizes=[512, 256, 128],
+    transformer_positions=[0]).to(DEVICE)
+
+# classifier
+CLA = nn.Sequential(nn.Linear(LATENT_SPACE, 64), nn.ReLU(), nn.Linear(64,10)).to(DEVICE)
+params = sum([np.prod(p.size()) for p in ENC.parameters()])
+ENC(traindata[0].pos)
+
 traindata = dataset.FaustDataset(FAUST, train=True, test=False, transform_data=True)
 testdata = dataset.FaustDataset(FAUST, train=False, test=True,  transform_data=True)
 
