@@ -1,5 +1,6 @@
-# Adversarial-Examples-on-Meshes
-This repository contains the code for my Master's Thesis, which consists in developing a way to generalize adversarial perturbations on meshes.
+# Adversarial-Surfaces-via-Band-Limited-Perturbations
+This repository contains the majority of the code for [Generating Adversarial Surfaces via Band-Limited Perturbations
+](https://diglib.eg.org/handle/10.1111/cgf14083).
 
 ## Dependencies
 ### PyTorch 1.4
@@ -28,7 +29,7 @@ The data for the dataset can be downloaded at the following pages:
 Once downloaded put the data inside a subfolder named `raw` inside a root folder choosen by you; *e.g.* if  `/home/faust` is the root directory for the dataset, then the downloaded data should be put in `/home/faust/raw`).
 
 ## Pre-trained Parameters
-The pre-trained parametes for the classifiers can be found [here]().
+The pre-trained parametes for the classifiers can be found [here](https://drive.google.com/folderview?id=1Bv0QM6R06nyCr9J-5sGIEtLKwxM6Qowa).
 Pass this data in input when instantiating a classifier.
 For a more in detail explanation, look at this two tutorials:
  * [tutorial with ChebyNet](notebooks/tutorial.ipynb)
