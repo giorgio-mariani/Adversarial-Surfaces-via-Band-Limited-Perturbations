@@ -48,7 +48,7 @@ class SmalDataset(torch_geometric.data.InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        files = listdir(self.raw_dir)
+        files = sorted(listdir(self.raw_dir))
         categ_files = [f for f in files if isfile(join(self.raw_dir, f)) and f.split(".")[-1]=="ply"]
         return categ_files
         

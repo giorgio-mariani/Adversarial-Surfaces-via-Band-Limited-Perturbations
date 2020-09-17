@@ -58,6 +58,7 @@ def evaluate(
             y = eval_data[i].y
 
             out:torch.Tensor = classifier(x)
+            
             if confusion is None:
                 num_classes = out.shape[-1]
                 confusion = torch.zeros([num_classes, num_classes])
